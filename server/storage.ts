@@ -9,7 +9,7 @@ import type {
   SignedDocument,
   SmsCampaign,
   Visitor,
-} from "@shared/schema";
+} from "../shared/schema";
 import { getSupabase } from "./supabase";
 
 type VisitorRow = {

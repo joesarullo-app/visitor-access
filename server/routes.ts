@@ -6,7 +6,7 @@ import {
   guestCheckInSchema,
   insertVisitorSchema,
   visitorStatusUpdateSchema,
-} from "@shared/schema";
+} from "../shared/schema";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 async function signedDocumentPdf(document: Awaited<ReturnType<typeof storage.getSignedDocument>>) {
