@@ -1,15 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Express } from "express";
 
-let appPromise: Promise<Express> | null = null;
+let appPromise: Promise<any> | null = null;
 let initError: unknown = null;
 
-async function loadApp(): Promise<Express> {
-  const { createApp } = await import("../server/app");
-  return createApp();
+async function loadApp(): Promise<any> {
+  const mod = await import("../server/app");
+  return mod.createApp();
 }
 
-function getApp(): Promise<Express> {
+function getApp(): Promise<any> {
   if (!appPromise) {
     appPromise = loadApp().catch((err) => {
       initError = err;
@@ -33,9 +32,17 @@ function writeJson(
   status: number,
   body: Record<string, unknown>,
 ): void {
-  res.statusCode = status;
-  res.setHeader("content-type", "application/json; charset=utf-8");
-  res.end(JSON.stringify(body));
+  try {
+    res.statusCode = status;
+    res.setHeader("content-type", "application/json; charset=utf-8");
+    res.end(JSON.stringify(body));
+  } catch {
+    try {
+      res.end();
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function handleHealth(req: IncomingMessage, res: ServerResponse): void {
@@ -49,6 +56,7 @@ function handleHealth(req: IncomingMessage, res: ServerResponse): void {
       SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
       NODE_ENV: process.env.NODE_ENV ?? null,
       VERCEL: Boolean(process.env.VERCEL),
+      VERCEL_REGION: process.env.VERCEL_REGION ?? null,
     },
     appInitialized: appPromise !== null && initError === null,
     initError: initError ? sanitizeMessage(initError) : null,
@@ -62,66 +70,75 @@ function urlPath(req: IncomingMessage): string {
   return qIndex === -1 ? raw : raw.slice(0, qIndex);
 }
 
+async function dispatchToApp(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  let app: any;
+  try {
+    app = await getApp();
+  } catch (err) {
+    console.error("api/index: failed to initialize app", err);
+    writeJson(res, 500, {
+      error: "initialization_failed",
+      message: sanitizeMessage(err),
+    });
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    res.on("finish", done);
+    res.on("close", done);
+    try {
+      app(req, res, (err?: unknown) => {
+        if (err) {
+          console.error("api/index: express next(err)", err);
+          if (!res.headersSent) {
+            writeJson(res, 500, {
+              error: "request_failed",
+              message: sanitizeMessage(err),
+            });
+          }
+        }
+        done();
+      });
+    } catch (err) {
+      console.error("api/index: synchronous dispatch error", err);
+      if (!res.headersSent) {
+        writeJson(res, 500, {
+          error: "dispatch_failed",
+          message: sanitizeMessage(err),
+        });
+      }
+      done();
+    }
+  });
+}
+
 export default async function handler(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
   try {
     const path = urlPath(req);
-    if (path === "/api/health" || path === "/api/health/") {
+
+    // Always-on health endpoint: no imports, no Supabase, no Express.
+    if (
+      path === "/api/health" ||
+      path === "/api/health/" ||
+      path === "/health"
+    ) {
       handleHealth(req, res);
       return;
     }
 
-    let app: Express;
-    try {
-      app = await getApp();
-    } catch (err) {
-      console.error("api/index: failed to initialize app", err);
-      writeJson(res, 500, {
-        error: "initialization_failed",
-        message: sanitizeMessage(err),
-      });
-      return;
-    }
-
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        resolve();
-      };
-      res.on("finish", done);
-      res.on("close", done);
-      try {
-        app(
-          req as unknown as Parameters<Express>[0],
-          res as unknown as Parameters<Express>[1],
-          (err?: unknown) => {
-            if (err) {
-              console.error("api/index: express next(err)", err);
-              if (!res.headersSent) {
-                writeJson(res, 500, {
-                  error: "request_failed",
-                  message: sanitizeMessage(err),
-                });
-              }
-            }
-            done();
-          },
-        );
-      } catch (err) {
-        console.error("api/index: synchronous dispatch error", err);
-        if (!res.headersSent) {
-          writeJson(res, 500, {
-            error: "dispatch_failed",
-            message: sanitizeMessage(err),
-          });
-        }
-        done();
-      }
-    });
+    await dispatchToApp(req, res);
   } catch (err) {
     console.error("api/index: unhandled top-level error", err);
     if (!res.headersSent) {
