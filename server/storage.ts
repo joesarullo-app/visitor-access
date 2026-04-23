@@ -1,11 +1,3 @@
-import {
-  auditLogs,
-  complianceControls,
-  documentTemplates,
-  signedDocuments,
-  smsCampaigns,
-  visitors,
-} from "@shared/schema";
 import type {
   AuditLog,
   ComplianceControl,
@@ -18,353 +10,164 @@ import type {
   SmsCampaign,
   Visitor,
 } from "@shared/schema";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
-import { desc, eq } from "drizzle-orm";
+import { getSupabase } from "./supabase";
 
-const sqlite = new Database("data.db");
-sqlite.pragma("journal_mode = WAL");
-
-sqlite
-  .prepare(
-    `
-    CREATE TABLE IF NOT EXISTS visitors (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      full_name TEXT NOT NULL,
-      company TEXT NOT NULL,
-      email TEXT NOT NULL,
-      phone TEXT NOT NULL,
-      host_name TEXT NOT NULL,
-      purpose TEXT NOT NULL,
-      expected_arrival TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'scheduled',
-      badge_number TEXT,
-      notes TEXT,
-      checked_in_at TEXT,
-      checked_out_at TEXT
-    )
-  `,
-  )
-  .run();
-
-sqlite
-  .prepare(
-    `
-    CREATE TABLE IF NOT EXISTS compliance_controls (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      control_id TEXT NOT NULL,
-      category TEXT NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT NOT NULL,
-      status TEXT NOT NULL,
-      evidence TEXT NOT NULL,
-      owner TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `,
-  )
-  .run();
-
-sqlite
-  .prepare(
-    `
-    CREATE TABLE IF NOT EXISTS document_templates (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      body TEXT NOT NULL,
-      requires_signature INTEGER NOT NULL DEFAULT 1,
-      active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL
-    )
-  `,
-  )
-  .run();
-
-sqlite
-  .prepare(
-    `
-    CREATE TABLE IF NOT EXISTS signed_documents (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      visitor_id INTEGER NOT NULL,
-      template_id INTEGER NOT NULL,
-      document_name TEXT NOT NULL,
-      document_kind TEXT NOT NULL,
-      signer_name TEXT NOT NULL,
-      signer_email TEXT NOT NULL,
-      signature TEXT NOT NULL,
-      acknowledged INTEGER NOT NULL DEFAULT 1,
-      signed_at TEXT NOT NULL,
-      pdf_content TEXT NOT NULL
-    )
-  `,
-  )
-  .run();
-
-sqlite
-  .prepare(
-    `
-    CREATE TABLE IF NOT EXISTS sms_campaigns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      audience TEXT NOT NULL,
-      message TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'draft',
-      recipient_count INTEGER NOT NULL DEFAULT 0,
-      delivered_count INTEGER NOT NULL DEFAULT 0,
-      blocked_count INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
-    )
-  `,
-  )
-  .run();
-
-sqlite
-  .prepare(
-    `
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      actor TEXT NOT NULL,
-      action TEXT NOT NULL,
-      target TEXT NOT NULL,
-      detail TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )
-  `,
-  )
-  .run();
-
-export const db = drizzle(sqlite);
-
-const seedCount = sqlite.prepare("SELECT COUNT(*) as count FROM visitors").get() as { count: number };
-
-if (seedCount.count === 0) {
-  const localInputDate = (offsetMinutes: number) =>
-    new Date(Date.now() + offsetMinutes * 60 * 1000).toISOString().slice(0, 16);
-
-  const seedVisitors: InsertVisitor[] = [
-    {
-      fullName: "Maya Chen",
-      company: "Northstar Design",
-      email: "maya.chen@northstar.example",
-      phone: "(415) 555-0191",
-      hostName: "Alex Morgan",
-      purpose: "Workspace analytics demo",
-      expectedArrival: localInputDate(-45),
-      status: "checked_in",
-      badgeNumber: "A-104",
-      notes: "NDA signed at reception",
-    },
-    {
-      fullName: "Ethan Brooks",
-      company: "Atlas Facilities",
-      email: "ethan.brooks@atlas.example",
-      phone: "(212) 555-0146",
-      hostName: "Priya Shah",
-      purpose: "Facilities planning workshop",
-      expectedArrival: localInputDate(35),
-      status: "scheduled",
-      badgeNumber: null,
-      notes: "Send to floor 8",
-    },
-    {
-      fullName: "Sofia Ramirez",
-      company: "Cobalt Real Estate",
-      email: "sofia.ramirez@cobalt.example",
-      phone: "(310) 555-0168",
-      hostName: "Jordan Lee",
-      purpose: "Lease review meeting",
-      expectedArrival: localInputDate(110),
-      status: "scheduled",
-      badgeNumber: null,
-      notes: null,
-    },
-    {
-      fullName: "Marcus Reed",
-      company: "Envoy Security",
-      email: "marcus.reed@envoy.example",
-      phone: "(646) 555-0182",
-      hostName: "Taylor Kim",
-      purpose: "Badge system audit",
-      expectedArrival: localInputDate(-160),
-      status: "checked_out",
-      badgeNumber: "B-221",
-      notes: "Returned temporary badge",
-    },
-  ];
-
-  const insert = sqlite.prepare(
-    `
-      INSERT INTO visitors (
-        full_name, company, email, phone, host_name, purpose, expected_arrival,
-        status, badge_number, notes, checked_in_at, checked_out_at
-      )
-      VALUES (
-        @fullName, @company, @email, @phone, @hostName, @purpose, @expectedArrival,
-        @status, @badgeNumber, @notes, @checkedInAt, @checkedOutAt
-      )
-    `,
-  );
-
-  const now = new Date().toISOString();
-  const seed = sqlite.transaction((records: InsertVisitor[]) => {
-    records.forEach((record) =>
-      insert.run({
-        ...record,
-        checkedInAt:
-          record.status === "checked_in" || record.status === "checked_out" ? now : null,
-        checkedOutAt: record.status === "checked_out" ? now : null,
-      }),
-    );
-  });
-  seed(seedVisitors);
-}
-
-const controlCount = sqlite.prepare("SELECT COUNT(*) as count FROM compliance_controls").get() as {
-  count: number;
+type VisitorRow = {
+  id: number;
+  full_name: string;
+  company: string;
+  email: string;
+  phone: string;
+  host_name: string;
+  purpose: string;
+  expected_arrival: string;
+  status: Visitor["status"];
+  badge_number: string | null;
+  notes: string | null;
+  checked_in_at: string | null;
+  checked_out_at: string | null;
 };
 
-if (controlCount.count === 0) {
-  const now = new Date().toISOString();
-  const controls: Omit<ComplianceControl, "id">[] = [
-    {
-      controlId: "CC6.1",
-      category: "Access control",
-      title: "Role-based access policy",
-      description: "Define least-privilege roles for receptionist, host, security admin, and auditor access.",
-      status: "in_progress",
-      evidence: "Product role model drafted; identity provider integration pending.",
-      owner: "Security",
-      updatedAt: now,
-    },
-    {
-      controlId: "CC6.6",
-      category: "Change management",
-      title: "Production change log",
-      description: "Track product changes, approvals, and deployment history for audit evidence.",
-      status: "implemented",
-      evidence: "Git commits and deployment logs are retained for each release.",
-      owner: "Engineering",
-      updatedAt: now,
-    },
-    {
-      controlId: "CC7.2",
-      category: "Monitoring",
-      title: "Visitor activity audit trail",
-      description: "Log sensitive actions including visitor registration, check-in, check-out, exports, and text campaigns.",
-      status: "implemented",
-      evidence: "Audit log table records action, target, actor, timestamp, and detail.",
-      owner: "Operations",
-      updatedAt: now,
-    },
-    {
-      controlId: "CC8.1",
-      category: "Data retention",
-      title: "Visitor data retention schedule",
-      description: "Set retention limits for visitor PII, badge records, SMS campaigns, and audit logs.",
-      status: "needs_evidence",
-      evidence: "Policy decision required before automated deletion is enabled.",
-      owner: "Compliance",
-      updatedAt: now,
-    },
-    {
-      controlId: "A1.2",
-      category: "Availability",
-      title: "Incident response workflow",
-      description: "Maintain an incident plan covering outages, security events, SMS provider failures, and breach triage.",
-      status: "in_progress",
-      evidence: "Incident categories drafted; escalation contacts still needed.",
-      owner: "Security",
-      updatedAt: now,
-    },
-    {
-      controlId: "P1.1",
-      category: "Privacy",
-      title: "SMS consent and opt-out controls",
-      description: "Restrict bulk messages to consented recipients and honor STOP/opt-out handling before sends.",
-      status: "implemented",
-      evidence: "Mass text simulation blocks recipients without consent or valid phone numbers.",
-      owner: "Compliance",
-      updatedAt: now,
-    },
-  ];
-
-  const insertControl = sqlite.prepare(
-    `
-      INSERT INTO compliance_controls (
-        control_id, category, title, description, status, evidence, owner, updated_at
-      )
-      VALUES (
-        @controlId, @category, @title, @description, @status, @evidence, @owner, @updatedAt
-      )
-    `,
-  );
-  const seedControls = sqlite.transaction((records: Omit<ComplianceControl, "id">[]) => {
-    records.forEach((record) => insertControl.run(record));
-  });
-  seedControls(controls);
-}
-
-const auditCount = sqlite.prepare("SELECT COUNT(*) as count FROM audit_logs").get() as { count: number };
-
-if (auditCount.count === 0) {
-  sqlite
-    .prepare(
-      `
-      INSERT INTO audit_logs (actor, action, target, detail, created_at)
-      VALUES (@actor, @action, @target, @detail, @createdAt)
-    `,
-    )
-    .run({
-      actor: "system",
-      action: "seed_compliance_controls",
-      target: "compliance",
-      detail: "Initialized SOC 2 readiness controls and audit trail.",
-      createdAt: new Date().toISOString(),
-    });
-}
-
-const documentCount = sqlite.prepare("SELECT COUNT(*) as count FROM document_templates").get() as {
-  count: number;
+type ControlRow = {
+  id: number;
+  control_id: string;
+  category: string;
+  title: string;
+  description: string;
+  status: ComplianceControl["status"];
+  evidence: string;
+  owner: string;
+  updated_at: string;
 };
 
-if (documentCount.count === 0) {
-  const documents: CreateDocumentTemplate[] = [
-    {
-      name: "Standard Visitor NDA",
-      kind: "nda",
-      requiresSignature: true,
-      active: true,
-      body:
-        "Visitor agrees not to disclose non-public information observed or received during the visit, including business plans, customer information, product designs, security procedures, workplace analytics, and facility data. This obligation does not apply to information that is public, already known, independently developed, rightfully received from a third party, or required to be disclosed by law.",
-    },
-    {
-      name: "Visitor Safety and OSHA Acknowledgment",
-      kind: "waiver",
-      requiresSignature: true,
-      active: true,
-      body:
-        "Visitor acknowledges site safety rules, agrees to follow posted instructions, use required protective equipment where applicable, stay with their host in restricted areas, and promptly report unsafe conditions or incidents to the host or front desk.",
-    },
-  ];
+type AuditRow = {
+  id: number;
+  actor: string;
+  action: string;
+  target: string;
+  detail: string;
+  created_at: string;
+};
 
-  const insertDocument = sqlite.prepare(
-    `
-      INSERT INTO document_templates (name, kind, body, requires_signature, active, created_at)
-      VALUES (@name, @kind, @body, @requiresSignature, @active, @createdAt)
-    `,
-  );
-  const seedDocuments = sqlite.transaction((records: CreateDocumentTemplate[]) => {
-    records.forEach((record) =>
-      insertDocument.run({
-        ...record,
-        requiresSignature: record.requiresSignature ? 1 : 0,
-        active: record.active ? 1 : 0,
-        createdAt: new Date().toISOString(),
-      }),
-    );
-  });
-  seedDocuments(documents);
+type CampaignRow = {
+  id: number;
+  name: string;
+  audience: string;
+  message: string;
+  status: SmsCampaign["status"];
+  recipient_count: number;
+  delivered_count: number;
+  blocked_count: number;
+  created_at: string;
+};
+
+type TemplateRow = {
+  id: number;
+  name: string;
+  kind: DocumentTemplate["kind"];
+  body: string;
+  requires_signature: boolean;
+  active: boolean;
+  created_at: string;
+};
+
+type SignedRow = {
+  id: number;
+  visitor_id: number;
+  template_id: number;
+  document_name: string;
+  document_kind: DocumentTemplate["kind"];
+  signer_name: string;
+  signer_email: string;
+  signature: string;
+  acknowledged: boolean;
+  signed_at: string;
+  pdf_content: string;
+};
+
+function mapVisitor(row: VisitorRow): Visitor {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    company: row.company,
+    email: row.email,
+    phone: row.phone,
+    hostName: row.host_name,
+    purpose: row.purpose,
+    expectedArrival: row.expected_arrival,
+    status: row.status,
+    badgeNumber: row.badge_number,
+    notes: row.notes,
+    checkedInAt: row.checked_in_at,
+    checkedOutAt: row.checked_out_at,
+  };
+}
+
+function mapControl(row: ControlRow): ComplianceControl {
+  return {
+    id: row.id,
+    controlId: row.control_id,
+    category: row.category,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    evidence: row.evidence,
+    owner: row.owner,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapAudit(row: AuditRow): AuditLog {
+  return {
+    id: row.id,
+    actor: row.actor,
+    action: row.action,
+    target: row.target,
+    detail: row.detail,
+    createdAt: row.created_at,
+  };
+}
+
+function mapCampaign(row: CampaignRow): SmsCampaign {
+  return {
+    id: row.id,
+    name: row.name,
+    audience: row.audience,
+    message: row.message,
+    status: row.status,
+    recipientCount: row.recipient_count,
+    deliveredCount: row.delivered_count,
+    blockedCount: row.blocked_count,
+    createdAt: row.created_at,
+  };
+}
+
+function mapTemplate(row: TemplateRow): DocumentTemplate {
+  return {
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    body: row.body,
+    requiresSignature: row.requires_signature,
+    active: row.active,
+    createdAt: row.created_at,
+  };
+}
+
+function mapSigned(row: SignedRow): SignedDocument {
+  return {
+    id: row.id,
+    visitorId: row.visitor_id,
+    templateId: row.template_id,
+    documentName: row.document_name,
+    documentKind: row.document_kind,
+    signerName: row.signer_name,
+    signerEmail: row.signer_email,
+    signature: row.signature,
+    acknowledged: row.acknowledged,
+    signedAt: row.signed_at,
+    pdfContent: row.pdf_content,
+  };
 }
 
 export interface IStorage {
@@ -385,85 +188,151 @@ export interface IStorage {
   guestCheckIn(checkIn: GuestCheckIn): Promise<{ visitor: Visitor; signedDocuments: SignedDocument[] }>;
 }
 
-export class DatabaseStorage implements IStorage {
+export class SupabaseStorage implements IStorage {
+  private get client() {
+    return getSupabase();
+  }
+
   async listVisitors(): Promise<Visitor[]> {
-    return db.select().from(visitors).orderBy(desc(visitors.expectedArrival)).all();
+    const { data, error } = await this.client
+      .from("visitors")
+      .select("*")
+      .order("expected_arrival", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(mapVisitor);
   }
 
   async createVisitor(insertVisitor: InsertVisitor): Promise<Visitor> {
-    const visitor = db.insert(visitors).values(insertVisitor).returning().get();
-    this.log("front_desk", "create_visitor", `visitor:${visitor.id}`, `Registered ${visitor.fullName}`);
+    const payload = {
+      full_name: insertVisitor.fullName,
+      company: insertVisitor.company,
+      email: insertVisitor.email,
+      phone: insertVisitor.phone,
+      host_name: insertVisitor.hostName,
+      purpose: insertVisitor.purpose,
+      expected_arrival: insertVisitor.expectedArrival,
+      status: insertVisitor.status ?? "scheduled",
+      badge_number: insertVisitor.badgeNumber ?? null,
+      notes: insertVisitor.notes ?? null,
+      checked_in_at: null,
+      checked_out_at: null,
+    };
+
+    const { data, error } = await this.client
+      .from("visitors")
+      .insert(payload)
+      .select("*")
+      .single();
+    if (error) throw error;
+    const visitor = mapVisitor(data as VisitorRow);
+    await this.log(
+      "front_desk",
+      "create_visitor",
+      `visitor:${visitor.id}`,
+      `Registered ${visitor.fullName}`,
+    );
     return visitor;
   }
 
   async checkInVisitor(id: number, badgeNumber?: string | null): Promise<Visitor | undefined> {
-    const visitor = db
-      .update(visitors)
-      .set({
+    const { data, error } = await this.client
+      .from("visitors")
+      .update({
         status: "checked_in",
-        badgeNumber: badgeNumber || null,
-        checkedInAt: new Date().toISOString(),
-        checkedOutAt: null,
+        badge_number: badgeNumber || null,
+        checked_in_at: new Date().toISOString(),
+        checked_out_at: null,
       })
-      .where(eq(visitors.id, id))
-      .returning()
-      .get();
-
-    if (visitor) {
-      this.log("front_desk", "check_in_visitor", `visitor:${visitor.id}`, `Checked in ${visitor.fullName}`);
-    }
-
+      .eq("id", id)
+      .select("*")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return undefined;
+    const visitor = mapVisitor(data as VisitorRow);
+    await this.log(
+      "front_desk",
+      "check_in_visitor",
+      `visitor:${visitor.id}`,
+      `Checked in ${visitor.fullName}`,
+    );
     return visitor;
   }
 
   async checkOutVisitor(id: number): Promise<Visitor | undefined> {
-    const visitor = db
-      .update(visitors)
-      .set({
+    const { data, error } = await this.client
+      .from("visitors")
+      .update({
         status: "checked_out",
-        checkedOutAt: new Date().toISOString(),
+        checked_out_at: new Date().toISOString(),
       })
-      .where(eq(visitors.id, id))
-      .returning()
-      .get();
-
-    if (visitor) {
-      this.log("front_desk", "check_out_visitor", `visitor:${visitor.id}`, `Checked out ${visitor.fullName}`);
-    }
-
+      .eq("id", id)
+      .select("*")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return undefined;
+    const visitor = mapVisitor(data as VisitorRow);
+    await this.log(
+      "front_desk",
+      "check_out_visitor",
+      `visitor:${visitor.id}`,
+      `Checked out ${visitor.fullName}`,
+    );
     return visitor;
   }
 
   async listControls(): Promise<ComplianceControl[]> {
-    return db.select().from(complianceControls).orderBy(complianceControls.controlId).all();
+    const { data, error } = await this.client
+      .from("compliance_controls")
+      .select("*")
+      .order("control_id", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map(mapControl);
   }
 
   async listAuditLogs(): Promise<AuditLog[]> {
-    return db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(25).all();
+    const { data, error } = await this.client
+      .from("audit_logs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(25);
+    if (error) throw error;
+    return (data ?? []).map(mapAudit);
   }
 
   async listSmsCampaigns(): Promise<SmsCampaign[]> {
-    return db.select().from(smsCampaigns).orderBy(desc(smsCampaigns.createdAt)).all();
+    const { data, error } = await this.client
+      .from("sms_campaigns")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(mapCampaign);
   }
 
   async createSmsCampaign(campaign: CreateSmsCampaign): Promise<SmsCampaign> {
-    const audienceVisitors = this.getAudienceVisitors(campaign.audience);
-    const deliverableVisitors = audienceVisitors.filter((visitor) => this.canTextVisitor(visitor));
+    const audienceVisitors = await this.getAudienceVisitors(campaign.audience);
+    const deliverableVisitors = audienceVisitors.filter((visitor) =>
+      this.canTextVisitor(visitor),
+    );
     const blockedCount = audienceVisitors.length - deliverableVisitors.length;
-    const smsCampaign = db
-      .insert(smsCampaigns)
-      .values({
-        ...campaign,
-        status: "simulated",
-        recipientCount: audienceVisitors.length,
-        deliveredCount: deliverableVisitors.length,
-        blockedCount,
-        createdAt: new Date().toISOString(),
-      })
-      .returning()
-      .get();
 
-    this.log(
+    const { data, error } = await this.client
+      .from("sms_campaigns")
+      .insert({
+        name: campaign.name,
+        audience: campaign.audience,
+        message: campaign.message,
+        status: "simulated",
+        recipient_count: audienceVisitors.length,
+        delivered_count: deliverableVisitors.length,
+        blocked_count: blockedCount,
+        created_at: new Date().toISOString(),
+      })
+      .select("*")
+      .single();
+    if (error) throw error;
+    const smsCampaign = mapCampaign(data as CampaignRow);
+
+    await this.log(
       "front_desk",
       "simulate_sms_campaign",
       `sms_campaign:${smsCampaign.id}`,
@@ -474,111 +343,153 @@ export class DatabaseStorage implements IStorage {
   }
 
   async logExport(recordCount: number): Promise<AuditLog> {
-    return db
-      .insert(auditLogs)
-      .values({
+    const { data, error } = await this.client
+      .from("audit_logs")
+      .insert({
         actor: "front_desk",
         action: "export_visitors_csv",
         target: "visitor_records",
         detail: `Exported ${recordCount} visitor records to CSV.`,
-        createdAt: new Date().toISOString(),
+        created_at: new Date().toISOString(),
       })
-      .returning()
-      .get();
+      .select("*")
+      .single();
+    if (error) throw error;
+    return mapAudit(data as AuditRow);
   }
 
   async listDocumentTemplates(): Promise<DocumentTemplate[]> {
-    return db.select().from(documentTemplates).orderBy(desc(documentTemplates.createdAt)).all();
+    const { data, error } = await this.client
+      .from("document_templates")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(mapTemplate);
   }
 
   async listActiveDocumentTemplates(): Promise<DocumentTemplate[]> {
-    return db.select().from(documentTemplates).where(eq(documentTemplates.active, true)).all();
+    const { data, error } = await this.client
+      .from("document_templates")
+      .select("*")
+      .eq("active", true);
+    if (error) throw error;
+    return (data ?? []).map(mapTemplate);
   }
 
   async createDocumentTemplate(template: CreateDocumentTemplate): Promise<DocumentTemplate> {
-    const document = db
-      .insert(documentTemplates)
-      .values({
-        ...template,
-        createdAt: new Date().toISOString(),
+    const { data, error } = await this.client
+      .from("document_templates")
+      .insert({
+        name: template.name,
+        kind: template.kind,
+        body: template.body,
+        requires_signature: template.requiresSignature ?? true,
+        active: template.active ?? true,
+        created_at: new Date().toISOString(),
       })
-      .returning()
-      .get();
-
-    this.log("admin", "create_document_template", `document_template:${document.id}`, `Created ${document.name}`);
+      .select("*")
+      .single();
+    if (error) throw error;
+    const document = mapTemplate(data as TemplateRow);
+    await this.log(
+      "admin",
+      "create_document_template",
+      `document_template:${document.id}`,
+      `Created ${document.name}`,
+    );
     return document;
   }
 
   async listSignedDocuments(visitorId?: number): Promise<SignedDocument[]> {
+    let query = this.client
+      .from("signed_documents")
+      .select("*")
+      .order("signed_at", { ascending: false });
     if (visitorId) {
-      return db
-        .select()
-        .from(signedDocuments)
-        .where(eq(signedDocuments.visitorId, visitorId))
-        .orderBy(desc(signedDocuments.signedAt))
-        .all();
+      query = query.eq("visitor_id", visitorId);
     }
-
-    return db.select().from(signedDocuments).orderBy(desc(signedDocuments.signedAt)).all();
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []).map(mapSigned);
   }
 
   async getSignedDocument(id: number): Promise<SignedDocument | undefined> {
-    return db.select().from(signedDocuments).where(eq(signedDocuments.id, id)).get();
+    const { data, error } = await this.client
+      .from("signed_documents")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? mapSigned(data as SignedRow) : undefined;
   }
 
-  async guestCheckIn(checkIn: GuestCheckIn): Promise<{ visitor: Visitor; signedDocuments: SignedDocument[] }> {
-    const templates = this.getTemplatesByIds(checkIn.acknowledgedTemplateIds);
-    const missingActive = db
-      .select()
-      .from(documentTemplates)
-      .where(eq(documentTemplates.active, true))
-      .all()
-      .filter((template) => !checkIn.acknowledgedTemplateIds.includes(template.id));
-
+  async guestCheckIn(
+    checkIn: GuestCheckIn,
+  ): Promise<{ visitor: Visitor; signedDocuments: SignedDocument[] }> {
+    const activeTemplates = await this.listActiveDocumentTemplates();
+    const missingActive = activeTemplates.filter(
+      (template) => !checkIn.acknowledgedTemplateIds.includes(template.id),
+    );
     if (missingActive.length > 0) {
       throw new Error("All active visitor documents must be acknowledged");
     }
 
-    const visitor = db
-      .insert(visitors)
-      .values({
-        fullName: checkIn.fullName,
+    const templates = activeTemplates.filter((template) =>
+      checkIn.acknowledgedTemplateIds.includes(template.id),
+    );
+
+    const nowIso = new Date().toISOString();
+    const { data: visitorData, error: visitorError } = await this.client
+      .from("visitors")
+      .insert({
+        full_name: checkIn.fullName,
         company: checkIn.company,
         email: checkIn.email,
         phone: checkIn.phone,
-        hostName: checkIn.hostName,
+        host_name: checkIn.hostName,
         purpose: checkIn.purpose,
-        expectedArrival: new Date().toISOString().slice(0, 16),
+        expected_arrival: new Date().toISOString().slice(0, 16),
         status: "checked_in",
-        badgeNumber: `G-${Date.now().toString().slice(-4)}`,
+        badge_number: `G-${Date.now().toString().slice(-4)}`,
         notes: "Guest self check-in with signed documents",
-        checkedInAt: new Date().toISOString(),
-        checkedOutAt: null,
+        checked_in_at: nowIso,
+        checked_out_at: null,
       })
-      .returning()
-      .get();
+      .select("*")
+      .single();
+    if (visitorError) throw visitorError;
+    const visitor = mapVisitor(visitorData as VisitorRow);
 
     const signedAt = new Date().toISOString();
-    const createdDocuments = templates.map((template) =>
-      db
-        .insert(signedDocuments)
-        .values({
-          visitorId: visitor.id,
-          templateId: template.id,
-          documentName: template.name,
-          documentKind: template.kind,
-          signerName: checkIn.fullName,
-          signerEmail: checkIn.email,
-          signature: checkIn.signature,
-          acknowledged: true,
-          signedAt,
-          pdfContent: this.buildSignedDocumentHtml(visitor, template, checkIn.signature, signedAt),
-        })
-        .returning()
-        .get(),
-    );
+    const signedRows = templates.map((template) => ({
+      visitor_id: visitor.id,
+      template_id: template.id,
+      document_name: template.name,
+      document_kind: template.kind,
+      signer_name: checkIn.fullName,
+      signer_email: checkIn.email,
+      signature: checkIn.signature,
+      acknowledged: true,
+      signed_at: signedAt,
+      pdf_content: this.buildSignedDocumentHtml(
+        visitor,
+        template,
+        checkIn.signature,
+        signedAt,
+      ),
+    }));
 
-    this.log(
+    let createdDocuments: SignedDocument[] = [];
+    if (signedRows.length > 0) {
+      const { data: signedData, error: signedError } = await this.client
+        .from("signed_documents")
+        .insert(signedRows)
+        .select("*");
+      if (signedError) throw signedError;
+      createdDocuments = (signedData ?? []).map((row) => mapSigned(row as SignedRow));
+    }
+
+    await this.log(
       "guest",
       "guest_check_in",
       `visitor:${visitor.id}`,
@@ -588,14 +499,12 @@ export class DatabaseStorage implements IStorage {
     return { visitor, signedDocuments: createdDocuments };
   }
 
-  private getAudienceVisitors(audience: string): Visitor[] {
-    const allVisitors = db.select().from(visitors).all();
-
-    if (audience === "all") {
-      return allVisitors;
-    }
-
-    return allVisitors.filter((visitor) => visitor.status === audience);
+  private async getAudienceVisitors(audience: string): Promise<Visitor[]> {
+    const { data, error } = await this.client.from("visitors").select("*");
+    if (error) throw error;
+    const all = (data ?? []).map(mapVisitor);
+    if (audience === "all") return all;
+    return all.filter((visitor) => visitor.status === audience);
   }
 
   private canTextVisitor(visitor: Visitor): boolean {
@@ -604,12 +513,6 @@ export class DatabaseStorage implements IStorage {
     const notes = visitor.notes?.toLowerCase() ?? "";
     const hasOptOut = notes.includes("opt out") || notes.includes("stop");
     return hasValidPhone && !hasOptOut;
-  }
-
-  private getTemplatesByIds(ids: number[]): DocumentTemplate[] {
-    return ids
-      .map((id) => db.select().from(documentTemplates).where(eq(documentTemplates.id, id)).get())
-      .filter((template): template is DocumentTemplate => Boolean(template));
   }
 
   private escapeHtml(value: string) {
@@ -674,17 +577,18 @@ export class DatabaseStorage implements IStorage {
     `;
   }
 
-  private log(actor: string, action: string, target: string, detail: string) {
-    db.insert(auditLogs)
-      .values({
-        actor,
-        action,
-        target,
-        detail,
-        createdAt: new Date().toISOString(),
-      })
-      .run();
+  private async log(actor: string, action: string, target: string, detail: string) {
+    const { error } = await this.client.from("audit_logs").insert({
+      actor,
+      action,
+      target,
+      detail,
+      created_at: new Date().toISOString(),
+    });
+    if (error) {
+      console.error("Failed to write audit log:", error);
+    }
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage: IStorage = new SupabaseStorage();

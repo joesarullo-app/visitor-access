@@ -1,5 +1,4 @@
 import type { Express } from "express";
-import type { Server } from "node:http";
 import { storage } from "./storage";
 import {
   createDocumentTemplateSchema,
@@ -60,10 +59,7 @@ async function signedDocumentPdf(document: Awaited<ReturnType<typeof storage.get
   return Buffer.from(await pdfDoc.save());
 }
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express,
-): Promise<Server> {
+export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/visitors", async (_req, res) => {
     const visitors = await storage.listVisitors();
     res.json(visitors);
@@ -229,6 +225,4 @@ export async function registerRoutes(
     );
     res.send(pdf);
   });
-
-  return httpServer;
 }
