@@ -1,12 +1,12 @@
 import type { Express } from "express";
-import { storage } from "./storage";
+import { storage } from "./storage.js";
 import {
   createDocumentTemplateSchema,
   createSmsCampaignSchema,
   guestCheckInSchema,
   insertVisitorSchema,
   visitorStatusUpdateSchema,
-} from "../shared/schema";
+} from "../shared/schema.js";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 async function signedDocumentPdf(document: Awaited<ReturnType<typeof storage.getSignedDocument>>) {

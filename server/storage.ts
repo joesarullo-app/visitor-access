@@ -9,8 +9,8 @@ import type {
   SignedDocument,
   SmsCampaign,
   Visitor,
-} from "../shared/schema";
-import { getSupabase } from "./supabase";
+} from "../shared/schema.js";
+import { getSupabase } from "./supabase.js";
 
 type VisitorRow = {
   id: number;
