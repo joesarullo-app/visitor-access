@@ -156,9 +156,9 @@ const visitorTypes = [
 ] as const;
 
 function getCheckInUrl() {
-  if (typeof window === "undefined") return "https://entra.app/#/?mode=checkin";
+  if (typeof window === "undefined") return "https://entra.app/#/checkin";
   const { origin, pathname } = window.location;
-  return `${origin}${pathname}#/?mode=checkin`;
+  return `${origin}${pathname}#/checkin`;
 }
 
 function QRCodeGraphic({ size = 88, value }: { size?: number; value?: string }) {
@@ -2437,10 +2437,15 @@ function VisitorDashboard() {
   );
 }
 
+function GuestCheckInAutoStart() {
+  return <GuestCheckInFlow onExit={() => (window.location.hash = "#/")} />;
+}
+
 function AppRouter() {
   return (
     <Switch>
       <Route path="/" component={GuestCheckInPage} />
+      <Route path="/checkin" component={GuestCheckInAutoStart} />
       <Route path="/admin" component={VisitorDashboard} />
       <Route component={NotFound} />
     </Switch>
