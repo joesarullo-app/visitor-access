@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Switch, Route, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
@@ -7,30 +7,49 @@ import { useForm } from "react-hook-form";
 import {
   Activity,
   AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
   BadgeCheck,
+  BarChart3,
   Bell,
+  Briefcase,
   Building2,
   CalendarClock,
+  Camera,
   CheckCircle2,
   ClipboardList,
   ClipboardSignature,
+  ConciergeBell,
   DoorOpen,
   Download,
   FileCheck2,
+  FileSignature,
   FileText,
+  Globe,
+  HardHat,
+  History,
+  LayoutDashboard,
   LockKeyhole,
+  MapPin,
   MessageSquareText,
   Moon,
+  PenTool,
   Plus,
+  QrCode,
   RadioTower,
   Search,
   Send,
   ServerCog,
   ShieldCheck,
+  Siren,
+  Smartphone,
   Sun,
   UserCheck,
+  UserCircle,
   UserCog,
+  UserPlus,
   Users,
+  Video,
 } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient, apiRequest, API_BASE } from "./lib/queryClient";
@@ -95,6 +114,10 @@ import {
 type Theme = "light" | "dark";
 type StatusFilter = "all" | VisitStatus;
 
+const SITE_TITLE = "Entra SB";
+const SITE_SUBTITLE = "HQ Reception";
+const SITE_LOCATION = "Santa Barbara HQ";
+
 const statusLabels: Record<VisitStatus, string> = {
   scheduled: "Scheduled",
   checked_in: "Checked in",
@@ -124,14 +147,39 @@ const purposeOptions = [
   "Security audit",
 ];
 
-function VisitFlowLogo() {
+const visitorTypes = [
+  { id: "guest", label: "General Guest", icon: UserCircle, detail: "Standard reception check-in" },
+  { id: "contractor", label: "Contractor", icon: HardHat, detail: "OSHA waiver required" },
+  { id: "candidate", label: "Candidate", icon: Briefcase, detail: "Interview reception" },
+] as const;
+
+function QRCodeGraphic({ size = 88 }: { size?: number }) {
   return (
     <svg
-      aria-label="VisitFlow logo"
-      viewBox="0 0 48 48"
-      className="h-9 w-9 text-primary"
-      fill="none"
+      aria-hidden
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      className="rounded-lg border border-white/20 bg-white p-1.5 text-slate-900"
     >
+      <rect x="0" y="0" width="30" height="30" fill="currentColor" />
+      <rect x="5" y="5" width="20" height="20" fill="white" />
+      <rect x="10" y="10" width="10" height="10" fill="currentColor" />
+      <rect x="70" y="0" width="30" height="30" fill="currentColor" />
+      <rect x="75" y="5" width="20" height="20" fill="white" />
+      <rect x="80" y="10" width="10" height="10" fill="currentColor" />
+      <rect x="0" y="70" width="30" height="30" fill="currentColor" />
+      <rect x="5" y="75" width="20" height="20" fill="white" />
+      <rect x="10" y="80" width="10" height="10" fill="currentColor" />
+      <rect x="40" y="40" width="20" height="20" fill="currentColor" />
+      <rect x="85" y="85" width="15" height="15" fill="currentColor" />
+    </svg>
+  );
+}
+
+function VisitFlowLogo({ className = "h-9 w-9 text-primary" }: { className?: string }) {
+  return (
+    <svg aria-label="VisitFlow logo" viewBox="0 0 48 48" className={className} fill="none">
       <rect x="8" y="7" width="23" height="34" rx="4" stroke="currentColor" strokeWidth="3" />
       <path d="M31 14h5.5A3.5 3.5 0 0 1 40 17.5v13A3.5 3.5 0 0 1 36.5 34H31" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
       <path d="M18 24h16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
@@ -175,21 +223,16 @@ function complianceTone(status: ComplianceControlStatus) {
 function dashboardStats(visitors: Visitor[]) {
   return {
     total: visitors.length,
-    scheduled: visitors.filter((visitor) => visitor.status === "scheduled").length,
-    checkedIn: visitors.filter((visitor) => visitor.status === "checked_in").length,
-    checkedOut: visitors.filter((visitor) => visitor.status === "checked_out").length,
+    scheduled: visitors.filter((v) => v.status === "scheduled").length,
+    checkedIn: visitors.filter((v) => v.status === "checked_in").length,
+    checkedOut: visitors.filter((v) => v.status === "checked_out").length,
   };
 }
 
 function complianceStats(controls: ComplianceControl[]) {
-  const implemented = controls.filter((control) => control.status === "implemented").length;
+  const implemented = controls.filter((c) => c.status === "implemented").length;
   const score = controls.length === 0 ? 0 : Math.round((implemented / controls.length) * 100);
-
-  return {
-    implemented,
-    total: controls.length,
-    score,
-  };
+  return { implemented, total: controls.length, score };
 }
 
 function csvCell(value: string | number | null) {
@@ -209,17 +252,17 @@ function downloadVisitorsCsv(visitors: Visitor[]) {
     "Badge",
     "Notes",
   ];
-  const rows = visitors.map((visitor) => [
-    visitor.fullName,
-    visitor.company,
-    visitor.email,
-    visitor.phone,
-    visitor.hostName,
-    visitor.purpose,
-    visitor.expectedArrival,
-    statusLabels[visitor.status],
-    visitor.badgeNumber,
-    visitor.notes,
+  const rows = visitors.map((v) => [
+    v.fullName,
+    v.company,
+    v.email,
+    v.phone,
+    v.hostName,
+    v.purpose,
+    v.expectedArrival,
+    statusLabels[v.status],
+    v.badgeNumber,
+    v.notes,
   ]);
   const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -254,13 +297,16 @@ function SkeletonRows() {
 
 function EmptyVisitors({ onNewVisitor }: { onNewVisitor: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card p-10 text-center" data-testid="empty-visitors">
+    <div
+      className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card p-10 text-center"
+      data-testid="empty-visitors"
+    >
       <div className="mb-4 rounded-full bg-primary/10 p-4 text-primary">
         <ClipboardList className="h-7 w-7" />
       </div>
       <h3 className="text-base font-semibold">No visitors match this view</h3>
       <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-        Register the next guest or adjust your filters to see today’s visit queue.
+        Register the next guest or adjust your filters to see today&rsquo;s visit queue.
       </p>
       <Button className="mt-5" onClick={onNewVisitor} data-testid="button-empty-register">
         Register visitor
@@ -269,9 +315,47 @@ function EmptyVisitors({ onNewVisitor }: { onNewVisitor: () => void }) {
   );
 }
 
+function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
+  const labels = ["Visit details", "Documents & sign", "Confirmation"];
+  return (
+    <ol className="flex items-center gap-2" aria-label="Check-in progress">
+      {labels.map((label, i) => {
+        const idx = (i + 1) as 1 | 2 | 3;
+        const active = idx === step;
+        const done = idx < step;
+        return (
+          <li key={label} className="flex items-center gap-2">
+            <span
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                done
+                  ? "bg-primary text-primary-foreground"
+                  : active
+                  ? "bg-primary/15 text-primary ring-2 ring-primary"
+                  : "bg-muted text-muted-foreground"
+              }`}
+              aria-current={active ? "step" : undefined}
+            >
+              {done ? <CheckCircle2 className="h-4 w-4" /> : idx}
+            </span>
+            <span
+              className={`hidden text-xs font-medium md:inline ${
+                active ? "text-foreground" : "text-muted-foreground"
+              }`}
+            >
+              {label}
+            </span>
+            {i < labels.length - 1 && <span className="mx-1 h-px w-6 bg-border" />}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function GuestCheckInPage() {
   const [theme, setTheme] = useState<Theme>("light");
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [visitorType, setVisitorType] = useState<(typeof visitorTypes)[number]["id"]>("guest");
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -299,7 +383,10 @@ function GuestCheckInPage() {
 
   useEffect(() => {
     if (documents.length > 0 && form.getValues("acknowledgedTemplateIds").length === 0) {
-      form.setValue("acknowledgedTemplateIds", documents.map((document) => document.id));
+      form.setValue(
+        "acknowledgedTemplateIds",
+        documents.map((d) => d.id),
+      );
     }
   }, [documents, form]);
 
@@ -319,165 +406,263 @@ function GuestCheckInPage() {
   const signedDocuments = checkInMutation.data?.signedDocuments ?? [];
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border bg-background/90 px-4 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 text-foreground dark:from-slate-950 dark:to-slate-900">
+      {/* Kiosk header */}
+      <header className="border-b border-border bg-background/80 px-4 py-4 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <VisitFlowLogo />
             <div>
-              <div className="font-semibold">VisitFlow</div>
-              <div className="text-xs text-muted-foreground">Guest check-in</div>
+              <div className="font-semibold leading-tight">VisitFlow</div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <MapPin className="h-3 w-3 text-primary" />
+                {SITE_LOCATION}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Badge variant="outline" className="hidden border-emerald-500/25 bg-emerald-500/10 text-emerald-700 sm:inline-flex dark:text-emerald-300">
+              <ShieldCheck className="mr-1 h-3 w-3" />
+              SOC 2 ready
+            </Badge>
             <Button
               variant="outline"
               size="icon"
               aria-label="Toggle theme"
-              onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+              onClick={() => setTheme((c) => (c === "dark" ? "light" : "dark"))}
               data-testid="button-guest-toggle-theme"
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
             <Link href="/admin">
-              <Button variant="outline" data-testid="link-admin-backend">Admin</Button>
+              <Button variant="outline" data-testid="link-admin-backend">
+                <LayoutDashboard className="h-4 w-4" />
+                Admin
+              </Button>
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-5xl gap-6 px-4 py-8 lg:grid-cols-[1fr_360px]">
+      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[1fr_360px]">
         <section className="space-y-6">
-          <div>
-            <Badge variant="outline" className="mb-3">Secure visitor kiosk</Badge>
-            <h1 className="text-xl font-semibold tracking-tight">Welcome. Check in for your visit.</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Enter your visit details, review required documents, sign once, and receive your check-in confirmation.
-            </p>
+          {/* Hero / location card */}
+          <div className="relative overflow-hidden rounded-3xl border border-border bg-slate-900 p-8 text-white shadow-xl">
+            <div
+              aria-hidden
+              className="absolute -left-24 -top-24 h-80 w-80 rounded-full bg-primary/30 blur-3xl"
+            />
+            <div className="relative flex flex-wrap items-start justify-between gap-6">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] font-bold uppercase tracking-widest">
+                  <MapPin className="h-3 w-3 text-primary" />
+                  {SITE_LOCATION}
+                </div>
+                <h1 className="mt-4 text-4xl font-black tracking-tight md:text-5xl">
+                  Welcome to {SITE_TITLE}
+                </h1>
+                <p className="mt-2 max-w-xl text-sm text-slate-300">
+                  {SITE_SUBTITLE} &middot; Check in, review required documents, sign once, and your host will be notified.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-widest">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-3 py-1 text-slate-200 ring-1 ring-white/10">
+                    <ShieldCheck className="h-3 w-3 text-emerald-400" /> Audit evidence
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-3 py-1 text-slate-200 ring-1 ring-white/10">
+                    <FileSignature className="h-3 w-3 text-primary" /> Signed NDA
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-3 py-1 text-slate-200 ring-1 ring-white/10">
+                    <HardHat className="h-3 w-3 text-amber-300" /> OSHA waiver
+                  </span>
+                </div>
+              </div>
+              <div className="hidden flex-col items-center gap-2 md:flex">
+                <QRCodeGraphic size={112} />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  Scan to check in
+                </span>
+              </div>
+            </div>
           </div>
 
-          <Card>
-            <CardHeader className="p-5">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">
-                  {step === 1 && "Step 1: Visit details"}
-                  {step === 2 && "Step 2: Documents and signature"}
-                  {step === 3 && "Check-in complete"}
-                </CardTitle>
-                <Badge variant="outline">{step}/3</Badge>
+          {/* Visitor type picker + check-in card */}
+          <Card className="overflow-hidden">
+            <CardHeader className="gap-3 border-b border-border p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-lg">
+                    {step === 1 && "Visit details"}
+                    {step === 2 && "Documents & signature"}
+                    {step === 3 && "Check-in complete"}
+                  </CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {step === 1 && "Pick your visit type and tell us who you're here to see."}
+                    {step === 2 && "Review each required document, then sign once to acknowledge all of them."}
+                    {step === 3 && "Your host has been notified."}
+                  </p>
+                </div>
+                <StepIndicator step={step} />
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-0">
+            <CardContent className="space-y-5 p-5">
               {step === 1 && (
-                <Form {...form}>
-                  <form className="grid gap-4" data-testid="form-guest-details">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <FormField
-                        control={form.control}
-                        name="fullName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Your name</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Jane Cooper" data-testid="input-guest-name" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="company"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Company</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Acme Workplace" data-testid="input-guest-company" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                <div className="space-y-5">
+                  <div>
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                      Visitor type
+                    </p>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {visitorTypes.map((type) => {
+                        const Icon = type.icon;
+                        const active = visitorType === type.id;
+                        return (
+                          <button
+                            key={type.id}
+                            type="button"
+                            onClick={() => setVisitorType(type.id)}
+                            className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition ${
+                              active
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-primary/40 hover:bg-accent/40"
+                            }`}
+                            data-testid={`button-visitor-type-${type.id}`}
+                          >
+                            <div
+                              className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                                active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold">{type.label}</p>
+                              <p className="text-xs text-muted-foreground">{type.detail}</p>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <FormField
-                        control={form.control}
-                        name="email"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Email</FormLabel>
-                            <FormControl>
-                              <Input type="email" placeholder="jane@company.com" data-testid="input-guest-email" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="phone"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Phone</FormLabel>
-                            <FormControl>
-                              <Input placeholder="(555) 010-2200" data-testid="input-guest-phone" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <FormField
-                        control={form.control}
-                        name="hostName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Host</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Who are you visiting?" data-testid="input-guest-host" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="purpose"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Purpose</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  </div>
+
+                  <Form {...form}>
+                    <form className="grid gap-4" data-testid="form-guest-details">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <FormField
+                          control={form.control}
+                          name="fullName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Your name</FormLabel>
                               <FormControl>
-                                <SelectTrigger data-testid="select-guest-purpose">
-                                  <SelectValue placeholder="Select purpose" />
-                                </SelectTrigger>
+                                <Input placeholder="Jane Cooper" data-testid="input-guest-name" {...field} />
                               </FormControl>
-                              <SelectContent>
-                                {purposeOptions.map((purpose) => (
-                                  <SelectItem key={purpose} value={purpose}>
-                                    {purpose}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={async () => {
-                        const ok = await form.trigger(["fullName", "company", "email", "phone", "hostName", "purpose"]);
-                        if (ok) setStep(2);
-                      }}
-                      data-testid="button-guest-next-documents"
-                    >
-                      Continue to documents
-                    </Button>
-                  </form>
-                </Form>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="company"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Company</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Acme Workplace" data-testid="input-guest-company" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <FormField
+                          control={form.control}
+                          name="email"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Email</FormLabel>
+                              <FormControl>
+                                <Input type="email" placeholder="jane@company.com" data-testid="input-guest-email" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="phone"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Phone</FormLabel>
+                              <FormControl>
+                                <Input placeholder="(555) 010-2200" data-testid="input-guest-phone" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <FormField
+                          control={form.control}
+                          name="hostName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Host</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Who are you visiting?" data-testid="input-guest-host" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="purpose"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Purpose</FormLabel>
+                              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-guest-purpose">
+                                    <SelectValue placeholder="Select purpose" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {purposeOptions.map((p) => (
+                                    <SelectItem key={p} value={p}>
+                                      {p}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        className="h-12 text-base font-semibold"
+                        onClick={async () => {
+                          const ok = await form.trigger([
+                            "fullName",
+                            "company",
+                            "email",
+                            "phone",
+                            "hostName",
+                            "purpose",
+                          ]);
+                          if (ok) setStep(2);
+                        }}
+                        data-testid="button-guest-next-documents"
+                      >
+                        Continue to documents
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </form>
+                  </Form>
+                </div>
               )}
 
               {step === 2 && (
@@ -490,18 +675,33 @@ function GuestCheckInPage() {
                     <div className="space-y-3">
                       {documentsQuery.isLoading ? (
                         <SkeletonRows />
+                      ) : documents.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                          No active documents. Proceed to sign.
+                        </div>
                       ) : (
-                        documents.map((document) => (
-                          <div key={document.id} className="rounded-xl border border-border p-4" data-testid={`card-guest-document-${document.id}`}>
+                        documents.map((doc) => (
+                          <div
+                            key={doc.id}
+                            className="rounded-2xl border border-border bg-muted/30 p-4"
+                            data-testid={`card-guest-document-${doc.id}`}
+                          >
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div className="flex items-center gap-2">
-                                <FileText className="h-4 w-4 text-primary" />
-                                <p className="text-sm font-medium">{document.name}</p>
+                                <div className="rounded-lg bg-primary/10 p-1.5 text-primary">
+                                  <FileText className="h-4 w-4" />
+                                </div>
+                                <p className="text-sm font-semibold">{doc.name}</p>
                               </div>
-                              <Badge variant="outline">{document.kind.toUpperCase()}</Badge>
+                              <Badge variant="outline" className="font-mono text-[10px] uppercase">
+                                {doc.kind}
+                              </Badge>
                             </div>
-                            <p className="mt-3 text-sm leading-6 text-muted-foreground">{document.body}</p>
-                            <p className="mt-3 text-xs text-muted-foreground">Required for visitor entry.</p>
+                            <p className="mt-3 text-sm leading-6 text-muted-foreground">{doc.body}</p>
+                            <p className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
+                              <ShieldCheck className="h-3 w-3 text-emerald-600" />
+                              Required for visitor entry
+                            </p>
                           </div>
                         ))
                       )}
@@ -512,24 +712,44 @@ function GuestCheckInPage() {
                       name="signature"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Electronic signature</FormLabel>
+                          <FormLabel className="flex items-center gap-2">
+                            <PenTool className="h-4 w-4 text-primary" />
+                            Electronic signature
+                          </FormLabel>
                           <FormControl>
-                            <Input placeholder="Type your full legal name" data-testid="input-guest-signature" {...field} />
+                            <Input
+                              placeholder="Type your full legal name"
+                              className="h-12 text-base"
+                              data-testid="input-guest-signature"
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
 
-                    <div className="rounded-lg border border-border bg-muted p-3 text-xs leading-5 text-muted-foreground">
-                      By checking in, you acknowledge all listed visitor documents. Signed copies will be available in the admin visitor log.
+                    <div className="rounded-xl border border-border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
+                      By checking in, you acknowledge all listed visitor documents. Signed copies are attached to the visitor log with a
+                      non-repudiation signature record.
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="outline" onClick={() => setStep(1)} data-testid="button-guest-back-details">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setStep(1)}
+                        data-testid="button-guest-back-details"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
                         Back
                       </Button>
-                      <Button type="submit" disabled={checkInMutation.isPending} data-testid="button-guest-complete-checkin">
+                      <Button
+                        type="submit"
+                        className="h-12 flex-1 text-base font-semibold"
+                        disabled={checkInMutation.isPending}
+                        data-testid="button-guest-complete-checkin"
+                      >
                         <ClipboardSignature className="h-4 w-4" />
                         {checkInMutation.isPending ? "Checking in..." : "Sign and check in"}
                       </Button>
@@ -539,30 +759,39 @@ function GuestCheckInPage() {
               )}
 
               {step === 3 && (
-                <div className="space-y-4" data-testid="status-guest-checkin-complete">
-                  <div className="rounded-full bg-emerald-500/10 p-4 text-emerald-700 dark:text-emerald-300 w-fit">
-                    <CheckCircle2 className="h-8 w-8" />
+                <div className="space-y-5" data-testid="status-guest-checkin-complete">
+                  <div className="flex flex-col items-center gap-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-8 text-center">
+                    <div className="rounded-full bg-emerald-500/15 p-4 text-emerald-700 dark:text-emerald-300">
+                      <CheckCircle2 className="h-10 w-10" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold">You are checked in.</h2>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Please have a seat in the lobby. Your host has been notified and is on their way.
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-lg font-semibold">You are checked in.</h2>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Please wait for your host. Your signed documents have been attached to the visitor log.
+                  <div className="rounded-2xl border border-border p-4">
+                    <p className="text-sm font-semibold">Signed documents</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Downloadable PDFs are attached to the visitor log.
                     </p>
-                  </div>
-                  <div className="rounded-xl border border-border p-4">
-                    <p className="text-sm font-medium">Signed documents</p>
                     <div className="mt-3 grid gap-2">
-                      {signedDocuments.map((document) => (
-                        <a
-                          key={document.id}
-                          href={`${API_BASE}/api/signed-documents/${document.id}/pdf`}
-                          className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
-                          data-testid={`link-guest-signed-pdf-${document.id}`}
-                        >
-                          <Download className="h-4 w-4" />
-                          {document.documentName} PDF
-                        </a>
-                      ))}
+                      {signedDocuments.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No signed documents.</p>
+                      ) : (
+                        signedDocuments.map((doc) => (
+                          <a
+                            key={doc.id}
+                            href={`${API_BASE}/api/signed-documents/${doc.id}/pdf`}
+                            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
+                            data-testid={`link-guest-signed-pdf-${doc.id}`}
+                          >
+                            <Download className="h-4 w-4" />
+                            {doc.documentName} PDF
+                          </a>
+                        ))
+                      )}
                     </div>
                   </div>
                   <Button
@@ -582,22 +811,61 @@ function GuestCheckInPage() {
         </section>
 
         <aside className="space-y-4">
-          <Card>
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2 text-sm font-medium">
+          <Card className="overflow-hidden">
+            <CardContent className="space-y-3 p-5">
+              <div className="flex items-center gap-2 text-sm font-semibold">
                 <ShieldCheck className="h-4 w-4 text-primary" />
                 Secure by default
               </div>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              <p className="text-sm leading-6 text-muted-foreground">
                 Every completed check-in creates audit evidence, signed document records, and a badge-ready visitor entry.
               </p>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Encryption
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">AES-256</p>
+                </div>
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Retention
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">30 days</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-5">
-              <p className="text-sm font-medium">Required documents</p>
-              <p className="mt-2 text-xl font-semibold tabular-nums" data-testid="text-guest-document-count">{documents.length}</p>
-              <p className="mt-1 text-xs text-muted-foreground">NDA, OSHA waiver, and any active admin templates.</p>
+              <p className="flex items-center gap-2 text-sm font-semibold">
+                <FileText className="h-4 w-4 text-primary" />
+                Required documents
+              </p>
+              <p
+                className="mt-2 text-2xl font-bold tabular-nums"
+                data-testid="text-guest-document-count"
+              >
+                {documents.length}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                NDA, OSHA waiver, and any active admin templates.
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="space-y-3 p-5">
+              <p className="flex items-center gap-2 text-sm font-semibold">
+                <ConciergeBell className="h-4 w-4 text-primary" />
+                Need a human?
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Tap the front-desk bell or ask any staff member. Reception is staffed during business hours.
+              </p>
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                <Smartphone className="h-3 w-3" />
+                SMS-first notifications
+              </div>
             </CardContent>
           </Card>
         </aside>
@@ -740,9 +1008,9 @@ function VisitorForm({ onSuccess }: { onSuccess: () => void }) {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {purposeOptions.map((purpose) => (
-                      <SelectItem key={purpose} value={purpose}>
-                        {purpose}
+                    {purposeOptions.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -772,7 +1040,12 @@ function VisitorForm({ onSuccess }: { onSuccess: () => void }) {
             <FormItem>
               <FormLabel>Notes</FormLabel>
               <FormControl>
-                <Textarea placeholder="Parking, NDA, floor, or accessibility notes" data-testid="textarea-notes" {...field} value={field.value || ""} />
+                <Textarea
+                  placeholder="Parking, NDA, floor, or accessibility notes"
+                  data-testid="textarea-notes"
+                  {...field}
+                  value={field.value || ""}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -792,7 +1065,8 @@ function SmsCampaignForm({ visitors }: { visitors: Visitor[] }) {
     defaultValues: {
       name: "Emergency lobby update",
       audience: "scheduled",
-      message: "VisitFlow update: Please check in at the front desk when you arrive. Reply STOP to opt out.",
+      message:
+        "VisitFlow update: Please check in at the front desk when you arrive. Reply STOP to opt out.",
     },
   });
 
@@ -801,10 +1075,10 @@ function SmsCampaignForm({ visitors }: { visitors: Visitor[] }) {
   const estimatedAudience =
     selectedAudience === "all"
       ? visitors
-      : visitors.filter((visitor) => visitor.status === selectedAudience);
-  const estimatedDeliverable = estimatedAudience.filter((visitor) => {
-    const normalizedPhone = visitor.phone.replace(/\D/g, "");
-    const notes = visitor.notes?.toLowerCase() ?? "";
+      : visitors.filter((v) => v.status === selectedAudience);
+  const estimatedDeliverable = estimatedAudience.filter((v) => {
+    const normalizedPhone = v.phone.replace(/\D/g, "");
+    const notes = v.notes?.toLowerCase() ?? "";
     return normalizedPhone.length >= 10 && !notes.includes("opt out") && !notes.includes("stop");
   });
 
@@ -830,8 +1104,8 @@ function SmsCampaignForm({ visitors }: { visitors: Visitor[] }) {
           <div className="flex gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
-              SMS is in simulation mode. A real provider should enforce consent, opt-out handling,
-              rate limits, quiet hours, and delivery webhooks before production sends.
+              SMS is in simulation mode. A real provider should enforce consent, opt-out handling, rate limits, quiet hours,
+              and delivery webhooks before production sends.
             </p>
           </div>
         </div>
@@ -915,9 +1189,12 @@ function SmsCampaignForm({ visitors }: { visitors: Visitor[] }) {
         </div>
 
         {createCampaignMutation.data && (
-          <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300" data-testid="status-sms-simulated">
-            Simulated send complete: {createCampaignMutation.data.deliveredCount} deliverable,
-            {" "}{createCampaignMutation.data.blockedCount} blocked by safeguards.
+          <div
+            className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300"
+            data-testid="status-sms-simulated"
+          >
+            Simulated send complete: {createCampaignMutation.data.deliveredCount} deliverable,{" "}
+            {createCampaignMutation.data.blockedCount} blocked by safeguards.
           </div>
         )}
 
@@ -930,13 +1207,7 @@ function SmsCampaignForm({ visitors }: { visitors: Visitor[] }) {
   );
 }
 
-function SmsCenter({
-  visitors,
-  campaigns,
-}: {
-  visitors: Visitor[];
-  campaigns: SmsCampaign[];
-}) {
+function SmsCenter({ visitors, campaigns }: { visitors: Visitor[]; campaigns: SmsCampaign[] }) {
   return (
     <Card>
       <CardHeader className="p-5">
@@ -964,25 +1235,33 @@ function SmsCenter({
               Provider integration notes
             </div>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              Connect Twilio, Telnyx, or Plivo server-side. Store provider message IDs, ingest delivery
-              receipts, and process STOP/START webhooks before enabling live sends.
+              Connect Twilio, Telnyx, or Plivo server-side. Store provider message IDs, ingest delivery receipts, and process
+              STOP/START webhooks before enabling live sends.
             </p>
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium">Recent campaigns</p>
             {campaigns.length === 0 ? (
-              <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground" data-testid="text-no-sms-campaigns">
+              <p
+                className="rounded-lg bg-muted p-3 text-sm text-muted-foreground"
+                data-testid="text-no-sms-campaigns"
+              >
                 No SMS simulations yet.
               </p>
             ) : (
-              campaigns.slice(0, 4).map((campaign) => (
-                <div key={campaign.id} className="rounded-lg border border-border p-3" data-testid={`card-sms-campaign-${campaign.id}`}>
+              campaigns.slice(0, 4).map((c) => (
+                <div
+                  key={c.id}
+                  className="rounded-lg border border-border p-3"
+                  data-testid={`card-sms-campaign-${c.id}`}
+                >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium">{campaign.name}</p>
-                    <Badge variant="outline">{campaign.status}</Badge>
+                    <p className="text-sm font-medium">{c.name}</p>
+                    <Badge variant="outline">{c.status}</Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {audienceLabels[campaign.audience as CreateSmsCampaign["audience"]]} · {campaign.deliveredCount} deliverable · {campaign.blockedCount} blocked
+                    {audienceLabels[c.audience as CreateSmsCampaign["audience"]]} &middot; {c.deliveredCount} deliverable &middot;{" "}
+                    {c.blockedCount} blocked
                   </p>
                 </div>
               ))
@@ -1032,23 +1311,27 @@ function ComplianceCenter({
           </div>
         </CardHeader>
         <CardContent className="space-y-3 p-5 pt-0">
-          {controls.map((control) => (
-            <div key={control.id} className="rounded-xl border border-border p-4" data-testid={`card-control-${control.controlId}`}>
+          {controls.map((c) => (
+            <div
+              key={c.id}
+              className="rounded-xl border border-border p-4"
+              data-testid={`card-control-${c.controlId}`}
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline">{control.controlId}</Badge>
-                    <span className="text-xs text-muted-foreground">{control.category}</span>
+                    <Badge variant="outline">{c.controlId}</Badge>
+                    <span className="text-xs text-muted-foreground">{c.category}</span>
                   </div>
-                  <p className="mt-2 text-sm font-medium">{control.title}</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{control.description}</p>
+                  <p className="mt-2 text-sm font-medium">{c.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{c.description}</p>
                 </div>
-                <Badge variant="outline" className={complianceTone(control.status)}>
-                  {complianceStatusLabels[control.status]}
+                <Badge variant="outline" className={complianceTone(c.status)}>
+                  {complianceStatusLabels[c.status]}
                 </Badge>
               </div>
               <div className="mt-3 rounded-lg bg-muted p-3 text-xs text-muted-foreground">
-                Evidence: {control.evidence}
+                Evidence: {c.evidence}
               </div>
             </div>
           ))}
@@ -1080,17 +1363,27 @@ function ComplianceCenter({
 
         <Card>
           <CardHeader className="p-5">
-            <CardTitle className="text-lg">Recent audit activity</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <History className="h-5 w-5 text-primary" />
+              Recent audit activity
+            </CardTitle>
             <p className="text-sm text-muted-foreground">Latest evidence-generating events.</p>
           </CardHeader>
           <CardContent className="space-y-3 p-5 pt-0">
             {auditLogs.length === 0 ? (
-              <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground" data-testid="text-no-audit-logs">
+              <p
+                className="rounded-lg bg-muted p-3 text-sm text-muted-foreground"
+                data-testid="text-no-audit-logs"
+              >
                 No audit events yet.
               </p>
             ) : (
               auditLogs.slice(0, 6).map((log) => (
-                <div key={log.id} className="rounded-lg border border-border p-3" data-testid={`card-audit-log-${log.id}`}>
+                <div
+                  key={log.id}
+                  className="rounded-lg border border-border p-3"
+                  data-testid={`card-audit-log-${log.id}`}
+                >
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium">{log.action.replaceAll("_", " ")}</p>
                     <span className="text-xs text-muted-foreground">{formatAuditTime(log.createdAt)}</span>
@@ -1112,7 +1405,8 @@ function DocumentAdmin({ documents }: { documents: DocumentTemplate[] }) {
     defaultValues: {
       name: "Contractor OSHA Acknowledgment",
       kind: "waiver",
-      body: "Visitor acknowledges that they will follow all posted safety instructions, remain with their host in controlled areas, and report hazards, injuries, or unsafe conditions immediately.",
+      body:
+        "Visitor acknowledges that they will follow all posted safety instructions, remain with their host in controlled areas, and report hazards, injuries, or unsafe conditions immediately.",
       requiresSignature: true,
       active: true,
     },
@@ -1136,14 +1430,16 @@ function DocumentAdmin({ documents }: { documents: DocumentTemplate[] }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <FileText className="h-5 w-5 text-primary" />
-              Admin document manager
+              <FileSignature className="h-5 w-5 text-primary" />
+              Document manager
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
               Add required NDAs, OSHA waivers, safety policies, and visitor acknowledgments.
             </p>
           </div>
-          <Badge variant="outline">{documents.filter((document) => document.active).length} active</Badge>
+          <Badge variant="outline">
+            {documents.filter((d) => d.active).length} active
+          </Badge>
         </div>
       </CardHeader>
       <CardContent className="grid gap-6 p-5 pt-0 xl:grid-cols-[1fr_360px]">
@@ -1209,7 +1505,10 @@ function DocumentAdmin({ documents }: { documents: DocumentTemplate[] }) {
               )}
             />
             {createDocumentMutation.data && (
-              <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300" data-testid="status-document-created">
+              <div
+                className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300"
+                data-testid="status-document-created"
+              >
                 Added {createDocumentMutation.data.name} to the guest check-in flow.
               </div>
             )}
@@ -1227,14 +1526,27 @@ function DocumentAdmin({ documents }: { documents: DocumentTemplate[] }) {
               No document templates yet.
             </p>
           ) : (
-            documents.slice(0, 8).map((document) => (
-              <div key={document.id} className="rounded-lg border border-border p-3" data-testid={`card-document-template-${document.id}`}>
+            documents.slice(0, 8).map((d) => (
+              <div
+                key={d.id}
+                className="rounded-xl border border-border p-3"
+                data-testid={`card-document-template-${d.id}`}
+              >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium">{document.name}</p>
-                  <Badge variant="outline">{document.kind.toUpperCase()}</Badge>
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-md bg-primary/10 p-1.5 text-primary">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <p className="text-sm font-medium">{d.name}</p>
+                  </div>
+                  <Badge variant="outline" className="font-mono text-[10px] uppercase">
+                    {d.kind}
+                  </Badge>
                 </div>
-                <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{document.body}</p>
-                <p className="mt-2 text-xs text-muted-foreground">{document.active ? "Active in guest check-in" : "Inactive"}</p>
+                <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">{d.body}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {d.active ? "Active in guest check-in" : "Inactive"}
+                </p>
               </div>
             ))
           )}
@@ -1244,6 +1556,8 @@ function DocumentAdmin({ documents }: { documents: DocumentTemplate[] }) {
   );
 }
 
+type AdminSection = "dashboard" | "visitors" | "documents" | "sms" | "compliance";
+
 function VisitorDashboard() {
   const [theme, setTheme] = useState<Theme>(() =>
     window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light",
@@ -1251,34 +1565,18 @@ function VisitorDashboard() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [section, setSection] = useState<AdminSection>("dashboard");
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
-  const visitorsQuery = useQuery<Visitor[]>({
-    queryKey: ["/api/visitors"],
-  });
-
-  const controlsQuery = useQuery<ComplianceControl[]>({
-    queryKey: ["/api/compliance-controls"],
-  });
-
-  const auditLogsQuery = useQuery<AuditLog[]>({
-    queryKey: ["/api/audit-logs"],
-  });
-
-  const campaignsQuery = useQuery<SmsCampaign[]>({
-    queryKey: ["/api/sms-campaigns"],
-  });
-
-  const documentsQuery = useQuery<DocumentTemplate[]>({
-    queryKey: ["/api/document-templates"],
-  });
-
-  const signedDocumentsQuery = useQuery<SignedDocument[]>({
-    queryKey: ["/api/signed-documents"],
-  });
+  const visitorsQuery = useQuery<Visitor[]>({ queryKey: ["/api/visitors"] });
+  const controlsQuery = useQuery<ComplianceControl[]>({ queryKey: ["/api/compliance-controls"] });
+  const auditLogsQuery = useQuery<AuditLog[]>({ queryKey: ["/api/audit-logs"] });
+  const campaignsQuery = useQuery<SmsCampaign[]>({ queryKey: ["/api/sms-campaigns"] });
+  const documentsQuery = useQuery<DocumentTemplate[]>({ queryKey: ["/api/document-templates"] });
+  const signedDocumentsQuery = useQuery<SignedDocument[]>({ queryKey: ["/api/signed-documents"] });
 
   const exportMutation = useMutation({
     mutationFn: async (recordCount: number) => {
@@ -1319,79 +1617,109 @@ function VisitorDashboard() {
   const signedDocuments = signedDocumentsQuery.data ?? [];
   const stats = dashboardStats(visitors);
   const soc2Stats = complianceStats(controls);
-  const activeVisitors = visitors.filter((visitor) => visitor.status === "checked_in");
+  const activeVisitors = visitors.filter((v) => v.status === "checked_in");
   const nextArrivals = visitors
-    .filter((visitor) => visitor.status === "scheduled")
+    .filter((v) => v.status === "scheduled")
     .slice()
     .sort((a, b) => new Date(a.expectedArrival).getTime() - new Date(b.expectedArrival).getTime())
     .slice(0, 3);
 
-  const filteredVisitors = visitors.filter((visitor) => {
-    const searchText = `${visitor.fullName} ${visitor.company} ${visitor.hostName} ${visitor.purpose}`.toLowerCase();
-    const matchesSearch = searchText.includes(search.toLowerCase());
-    const matchesFilter = filter === "all" || visitor.status === filter;
+  const filteredVisitors = visitors.filter((v) => {
+    const text = `${v.fullName} ${v.company} ${v.hostName} ${v.purpose}`.toLowerCase();
+    const matchesSearch = text.includes(search.toLowerCase());
+    const matchesFilter = filter === "all" || v.status === filter;
     return matchesSearch && matchesFilter;
   });
 
-  const signedDocumentsByVisitor = signedDocuments.reduce<Record<number, SignedDocument[]>>((acc, document) => {
-    acc[document.visitorId] = [...(acc[document.visitorId] ?? []), document];
-    return acc;
-  }, {});
+  const signedDocumentsByVisitor = useMemo(
+    () =>
+      signedDocuments.reduce<Record<number, SignedDocument[]>>((acc, d) => {
+        acc[d.visitorId] = [...(acc[d.visitorId] ?? []), d];
+        return acc;
+      }, {}),
+    [signedDocuments],
+  );
 
   const statCards = [
-    { label: "Today’s visitors", value: stats.total, icon: Users, hint: "Registered guests" },
-    { label: "Expected", value: stats.scheduled, icon: CalendarClock, hint: "Waiting to arrive" },
-    { label: "On site", value: stats.checkedIn, icon: UserCheck, hint: "Currently checked in" },
-    { label: "Completed", value: stats.checkedOut, icon: CheckCircle2, hint: "Checked out" },
-    { label: "SOC 2 controls", value: `${soc2Stats.implemented}/${soc2Stats.total}`, icon: ShieldCheck, hint: "Readiness evidence" },
+    { label: "Today's visitors", value: stats.total, icon: Users, hint: "Registered guests", tone: "text-primary bg-primary/10" },
+    { label: "Expected", value: stats.scheduled, icon: CalendarClock, hint: "Waiting to arrive", tone: "text-amber-700 bg-amber-500/10 dark:text-amber-300" },
+    { label: "On site", value: stats.checkedIn, icon: UserCheck, hint: "Currently checked in", tone: "text-emerald-700 bg-emerald-500/10 dark:text-emerald-300" },
+    { label: "Completed", value: stats.checkedOut, icon: CheckCircle2, hint: "Checked out", tone: "text-slate-700 bg-slate-500/10 dark:text-slate-300" },
+    { label: "SOC 2 controls", value: `${soc2Stats.implemented}/${soc2Stats.total}`, icon: ShieldCheck, hint: "Readiness evidence", tone: "text-sky-700 bg-sky-500/10 dark:text-sky-300" },
+  ];
+
+  const nav: { id: AdminSection; label: string; icon: typeof LayoutDashboard }[] = [
+    { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+    { id: "visitors", label: "Visitor log", icon: ClipboardList },
+    { id: "documents", label: "Documents", icon: FileText },
+    { id: "sms", label: "Mass texting", icon: MessageSquareText },
+    { id: "compliance", label: "Compliance", icon: ShieldCheck },
   ];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="grid min-h-screen lg:grid-cols-[272px_1fr]">
-        <aside className="hidden border-r border-sidebar-border bg-sidebar p-5 text-sidebar-foreground lg:flex lg:flex-col" aria-label="Primary navigation">
+        <aside
+          className="hidden border-r border-sidebar-border bg-sidebar p-5 text-sidebar-foreground lg:flex lg:flex-col"
+          aria-label="Primary navigation"
+        >
           <div className="flex items-center gap-3">
-            <VisitFlowLogo />
+            <VisitFlowLogo className="h-9 w-9 text-primary" />
             <div>
               <div className="font-semibold leading-tight">VisitFlow</div>
-              <div className="text-xs text-sidebar-foreground/65">Admin backend</div>
+              <div className="text-xs text-sidebar-foreground/65">Admin console</div>
             </div>
           </div>
-          <nav className="mt-8 grid gap-1 text-sm">
-            {[
-              { label: "Guest kiosk", icon: ClipboardSignature },
-              { label: "Lobby dashboard", icon: ClipboardList, active: true },
-              { label: "Mass texting", icon: MessageSquareText },
-              { label: "Documents", icon: FileText },
-              { label: "SOC 2 center", icon: ShieldCheck },
-              { label: "Badge log", icon: BadgeCheck },
-              { label: "Hosts", icon: Building2 },
-            ].map((item) => (
+
+          <div className="mt-6 rounded-xl border border-sidebar-border bg-sidebar-accent/60 p-3">
+            <div className="flex items-center gap-2 text-xs font-semibold">
+              <Building2 className="h-4 w-4 text-primary" />
+              {SITE_LOCATION}
+            </div>
+            <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-sidebar-foreground/60">
+              {SITE_TITLE} &middot; {SITE_SUBTITLE}
+            </div>
+          </div>
+
+          <nav className="mt-6 grid gap-1 text-sm">
+            <Link href="/">
               <button
-                key={item.label}
-                onClick={() => {
-                  if (item.label === "Guest kiosk") {
-                    window.location.hash = "/";
-                  }
-                }}
+                className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sidebar-foreground/65 transition hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                data-testid="button-nav-guest-kiosk"
+              >
+                <ClipboardSignature className="h-4 w-4" />
+                Guest kiosk
+              </button>
+            </Link>
+            {nav.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setSection(item.id)}
                 className={`flex min-h-10 items-center gap-3 rounded-lg px-3 text-left transition ${
-                  item.active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                  section === item.id
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                 }`}
-                data-testid={`button-nav-${item.label.toLowerCase().replaceAll(" ", "-")}`}
+                data-testid={`button-nav-${item.id}`}
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
               </button>
             ))}
           </nav>
+
           <div className="mt-auto rounded-xl border border-sidebar-border bg-sidebar-accent/80 p-4 text-sidebar-accent-foreground">
             <div className="flex items-center gap-2 text-sm font-medium">
               <ShieldCheck className="h-4 w-4 text-primary" />
               Security mode
             </div>
             <p className="mt-2 text-xs leading-5 text-sidebar-foreground/65">
-              Guest records are persisted in the app database and ready for access-control integrations.
+              Guest records are persisted in Supabase and ready for access-control integrations.
             </p>
+            <div className="mt-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              Systems nominal
+            </div>
           </div>
         </aside>
 
@@ -1402,14 +1730,30 @@ function VisitorDashboard() {
                 <VisitFlowLogo />
                 <div>
                   <div className="font-semibold">VisitFlow</div>
-                  <div className="text-xs text-muted-foreground">Front desk control</div>
+                  <div className="text-xs text-muted-foreground">Admin console</div>
                 </div>
               </div>
               <div className="hidden lg:block">
-                <h1 className="text-xl font-semibold tracking-tight">Lobby dashboard</h1>
-                <p className="text-sm text-muted-foreground">Admin backend for visitor logs, documents, and compliance evidence.</p>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-semibold tracking-tight">
+                    {nav.find((n) => n.id === section)?.label ?? "Dashboard"}
+                  </h1>
+                  <Badge
+                    variant="outline"
+                    className="border-sky-500/25 bg-sky-500/10 text-[10px] font-bold uppercase tracking-widest text-sky-700 dark:text-sky-300"
+                  >
+                    SOC 2 verified
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Admin backend for visitor logs, documents, and compliance evidence.
+                </p>
               </div>
               <div className="flex items-center gap-2">
+                <div className="hidden items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 md:inline-flex">
+                  <Globe className="h-3 w-3 text-primary" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">{SITE_LOCATION}</span>
+                </div>
                 <Button variant="outline" size="icon" aria-label="View alerts" data-testid="button-alerts">
                   <Bell className="h-4 w-4" />
                 </Button>
@@ -1417,7 +1761,7 @@ function VisitorDashboard() {
                   variant="outline"
                   size="icon"
                   aria-label="Toggle theme"
-                  onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+                  onClick={() => setTheme((c) => (c === "dark" ? "light" : "dark"))}
                   data-testid="button-toggle-theme"
                 >
                   {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -1441,37 +1785,316 @@ function VisitorDashboard() {
                 </Dialog>
               </div>
             </div>
+
+            {/* Mobile + tablet section tabs */}
+            <div className="mt-3 flex gap-1 overflow-x-auto whitespace-nowrap lg:hidden">
+              {nav.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setSection(item.id)}
+                  className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    section === item.id
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  <item.icon className="h-3.5 w-3.5" />
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </header>
 
           <section className="space-y-6 p-4 md:p-8" aria-label="Visitor management workspace">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              {statCards.map((stat) => (
-                <Card key={stat.label} className="overflow-hidden" data-testid={`card-stat-${stat.label.toLowerCase().replaceAll(" ", "-").replace("’", "")}`}>
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between">
+            {section === "dashboard" && (
+              <>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                  {statCards.map((stat) => (
+                    <Card
+                      key={stat.label}
+                      className="overflow-hidden"
+                      data-testid={`card-stat-${stat.label.toLowerCase().replaceAll(" ", "-").replace("'", "")}`}
+                    >
+                      <CardContent className="p-5">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                              {stat.label}
+                            </p>
+                            <p
+                              className="mt-2 text-2xl font-bold tabular-nums"
+                              data-testid={`text-stat-${stat.label.toLowerCase().replaceAll(" ", "-").replace("'", "")}`}
+                            >
+                              {stat.value}
+                            </p>
+                          </div>
+                          <div className={`rounded-lg p-2 ${stat.tone}`}>
+                            <stat.icon className="h-5 w-5" />
+                          </div>
+                        </div>
+                        <p className="mt-4 text-xs text-muted-foreground">{stat.hint}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+                  <Card>
+                    <CardHeader className="p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <BarChart3 className="h-5 w-5 text-primary" />
+                            Traffic overview
+                          </CardTitle>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Visitor flow snapshot for {SITE_LOCATION}.
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
+                          Live
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-5 pt-0">
+                      <div className="flex h-40 items-end gap-2">
+                        {[40, 65, 80, 45, 90, 30, 50, 60, 40, 75, 85, 55].map((h, i) => (
+                          <div
+                            key={i}
+                            className="relative flex-1 overflow-hidden rounded-t-lg bg-muted"
+                            aria-hidden
+                          >
+                            <div
+                              className="absolute bottom-0 w-full rounded-t-lg bg-primary/80 transition-all"
+                              style={{ height: `${h}%` }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        <span>00:00</span>
+                        <span>06:00</span>
+                        <span>12:00</span>
+                        <span>18:00</span>
+                        <span>23:59</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="overflow-hidden border-0 bg-slate-900 text-white">
+                    <CardContent className="space-y-5 p-6">
                       <div>
-                        <p className="text-sm text-muted-foreground">{stat.label}</p>
-                        <p className="mt-2 text-xl font-semibold tabular-nums" data-testid={`text-stat-${stat.label.toLowerCase().replaceAll(" ", "-").replace("’", "")}`}>
-                          {stat.value}
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="h-5 w-5 text-primary" />
+                          <p className="text-base font-bold">Trust hub</p>
+                        </div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Security governance
                         </p>
                       </div>
-                      <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                        <stat.icon className="h-5 w-5" />
-                      </div>
-                    </div>
-                    <p className="mt-4 text-xs text-muted-foreground">{stat.hint}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                      {[
+                        { label: "Encryption", value: "AES-256", color: "bg-emerald-500" },
+                        { label: "PII masking", value: "Active", color: "bg-sky-500" },
+                        { label: "Retention", value: "30 days", color: "bg-primary" },
+                      ].map((row) => (
+                        <div key={row.label}>
+                          <div className="mb-1.5 flex justify-between text-[10px] font-bold uppercase tracking-widest text-slate-200">
+                            <span>{row.label}</span>
+                            <span className="text-slate-100">{row.value}</span>
+                          </div>
+                          <div className="h-1 rounded-full bg-white/10">
+                            <div className={`h-full w-full rounded-full ${row.color}`} />
+                          </div>
+                        </div>
+                      ))}
+                      <Button
+                        variant="outline"
+                        className="w-full border-white/20 bg-white/10 text-white hover:bg-white/20"
+                        onClick={() => {
+                          exportMutation.mutate(visitors.length);
+                          downloadVisitorsCsv(visitors);
+                        }}
+                        data-testid="button-export-evidence"
+                      >
+                        <Download className="h-4 w-4" />
+                        Export SOC 2 evidence
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
 
-            <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+                <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+                  <Card className="min-w-0">
+                    <CardHeader className="p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <Siren className="h-5 w-5 text-rose-600" />
+                            Quick actions
+                          </CardTitle>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Frequent operations for the reception team.
+                          </p>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 p-5 pt-0 md:grid-cols-2">
+                      <button
+                        onClick={() => setIsDialogOpen(true)}
+                        className="flex items-center gap-3 rounded-2xl border border-border p-4 text-left transition hover:border-primary/40 hover:bg-accent/30"
+                        data-testid="button-quick-register"
+                      >
+                        <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
+                          <UserPlus className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">Register visitor</p>
+                          <p className="text-xs text-muted-foreground">Pre-arrival check-in</p>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => setSection("sms")}
+                        className="flex items-center gap-3 rounded-2xl border border-border p-4 text-left transition hover:border-primary/40 hover:bg-accent/30"
+                        data-testid="button-quick-sms"
+                      >
+                        <div className="rounded-xl bg-sky-500/10 p-2.5 text-sky-700 dark:text-sky-300">
+                          <MessageSquareText className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">Mass text</p>
+                          <p className="text-xs text-muted-foreground">Notify on-site visitors</p>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => setSection("documents")}
+                        className="flex items-center gap-3 rounded-2xl border border-border p-4 text-left transition hover:border-primary/40 hover:bg-accent/30"
+                        data-testid="button-quick-docs"
+                      >
+                        <div className="rounded-xl bg-emerald-500/10 p-2.5 text-emerald-700 dark:text-emerald-300">
+                          <FileSignature className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">Documents</p>
+                          <p className="text-xs text-muted-foreground">Add NDA / OSHA waiver</p>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => {
+                          exportMutation.mutate(filteredVisitors.length);
+                          downloadVisitorsCsv(filteredVisitors);
+                        }}
+                        className="flex items-center gap-3 rounded-2xl border border-border p-4 text-left transition hover:border-primary/40 hover:bg-accent/30"
+                        data-testid="button-quick-export"
+                      >
+                        <div className="rounded-xl bg-amber-500/10 p-2.5 text-amber-700 dark:text-amber-300">
+                          <Download className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">Export CSV</p>
+                          <p className="text-xs text-muted-foreground">Audit-logged download</p>
+                        </div>
+                      </button>
+                    </CardContent>
+                  </Card>
+
+                  <div className="space-y-6">
+                    <Card>
+                      <CardHeader className="p-5">
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                          <UserCheck className="h-5 w-5 text-emerald-600" />
+                          Active visitors
+                        </CardTitle>
+                        <p className="text-sm text-muted-foreground">People currently on site.</p>
+                      </CardHeader>
+                      <CardContent className="space-y-3 p-5 pt-0">
+                        {activeVisitors.length === 0 ? (
+                          <p
+                            className="rounded-lg bg-muted p-4 text-sm text-muted-foreground"
+                            data-testid="text-no-active-visitors"
+                          >
+                            No active guests right now.
+                          </p>
+                        ) : (
+                          activeVisitors.map((v) => (
+                            <div
+                              key={v.id}
+                              className="flex items-center gap-3 rounded-lg border border-border p-3"
+                              data-testid={`card-active-${v.id}`}
+                            >
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                                {v.fullName
+                                  .split(" ")
+                                  .map((p) => p[0])
+                                  .slice(0, 2)
+                                  .join("")}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">{v.fullName}</p>
+                                <p className="truncate text-xs text-muted-foreground">
+                                  Hosted by {v.hostName}
+                                </p>
+                              </div>
+                              <Badge variant="outline">{v.badgeNumber || "No badge"}</Badge>
+                            </div>
+                          ))
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="p-5">
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                          <CalendarClock className="h-5 w-5 text-amber-600" />
+                          Next arrivals
+                        </CardTitle>
+                        <p className="text-sm text-muted-foreground">Upcoming guests to prepare for.</p>
+                      </CardHeader>
+                      <CardContent className="space-y-3 p-5 pt-0">
+                        {nextArrivals.length === 0 ? (
+                          <p
+                            className="rounded-lg bg-muted p-4 text-sm text-muted-foreground"
+                            data-testid="text-no-next-arrivals"
+                          >
+                            No scheduled arrivals are waiting.
+                          </p>
+                        ) : (
+                          nextArrivals.map((v) => (
+                            <div
+                              key={v.id}
+                              className="flex items-start gap-3 rounded-lg border border-border p-3"
+                              data-testid={`card-arrival-${v.id}`}
+                            >
+                              <div className="mt-0.5 rounded-md bg-amber-500/10 p-2 text-amber-700 dark:text-amber-300">
+                                <CalendarClock className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">{v.fullName}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatArrival(v.expectedArrival)} &middot; {v.hostName}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {section === "visitors" && (
               <Card className="min-w-0">
                 <CardHeader className="gap-4 p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <CardTitle className="text-lg">Visitor queue</CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">Search, filter, check in, and check out guests.</p>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <ClipboardList className="h-5 w-5 text-primary" />
+                        Visitor queue
+                      </CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Search, filter, check in, and check out guests. Signed PDFs attach here.
+                      </p>
                     </div>
                     <Button
                       variant="outline"
@@ -1492,7 +2115,7 @@ function VisitorDashboard() {
                         className="pl-9"
                         placeholder="Search visitor, company, host, or purpose"
                         value={search}
-                        onChange={(event) => setSearch(event.target.value)}
+                        onChange={(e) => setSearch(e.target.value)}
                         data-testid="input-search-visitors"
                       />
                     </div>
@@ -1531,68 +2154,89 @@ function VisitorDashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredVisitors.map((visitor) => (
-                          <TableRow key={visitor.id} data-testid={`row-visitor-${visitor.id}`}>
+                        {filteredVisitors.map((v) => (
+                          <TableRow key={v.id} data-testid={`row-visitor-${v.id}`}>
                             <TableCell>
-                              <div className="font-medium" data-testid={`text-visitor-name-${visitor.id}`}>
-                                {visitor.fullName}
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                                  {v.fullName
+                                    .split(" ")
+                                    .map((p) => p[0])
+                                    .slice(0, 2)
+                                    .join("")}
+                                </div>
+                                <div>
+                                  <div className="font-medium" data-testid={`text-visitor-name-${v.id}`}>
+                                    {v.fullName}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {v.company} &middot; {v.purpose}
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-xs text-muted-foreground">{visitor.company} · {visitor.purpose}</div>
                             </TableCell>
                             <TableCell>
-                              <div className="text-sm">{visitor.hostName}</div>
-                              <div className="text-xs text-muted-foreground">{visitor.email}</div>
+                              <div className="text-sm">{v.hostName}</div>
+                              <div className="text-xs text-muted-foreground">{v.email}</div>
                             </TableCell>
-                            <TableCell className="tabular-nums">{formatArrival(visitor.expectedArrival)}</TableCell>
+                            <TableCell className="tabular-nums">{formatArrival(v.expectedArrival)}</TableCell>
                             <TableCell>
-                              <Badge variant="outline" className={statusTone(visitor.status)} data-testid={`status-visitor-${visitor.id}`}>
-                                {statusLabels[visitor.status]}
-                                {visitor.badgeNumber ? ` · ${visitor.badgeNumber}` : ""}
+                              <Badge variant="outline" className={statusTone(v.status)} data-testid={`status-visitor-${v.id}`}>
+                                {statusLabels[v.status]}
+                                {v.badgeNumber ? ` · ${v.badgeNumber}` : ""}
                               </Badge>
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-wrap gap-2">
-                                {(signedDocumentsByVisitor[visitor.id] ?? []).length === 0 ? (
-                                  <span className="text-xs text-muted-foreground" data-testid={`text-no-signed-docs-${visitor.id}`}>None</span>
+                                {(signedDocumentsByVisitor[v.id] ?? []).length === 0 ? (
+                                  <span
+                                    className="text-xs text-muted-foreground"
+                                    data-testid={`text-no-signed-docs-${v.id}`}
+                                  >
+                                    None
+                                  </span>
                                 ) : (
-                                  signedDocumentsByVisitor[visitor.id].map((document) => (
+                                  signedDocumentsByVisitor[v.id].map((d) => (
                                     <a
-                                      key={document.id}
-                                      href={`${API_BASE}/api/signed-documents/${document.id}/pdf`}
+                                      key={d.id}
+                                      href={`${API_BASE}/api/signed-documents/${d.id}/pdf`}
                                       className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-                                      data-testid={`link-signed-pdf-${document.id}`}
+                                      data-testid={`link-signed-pdf-${d.id}`}
                                     >
                                       <Download className="h-3 w-3" />
-                                      {document.documentKind.toUpperCase()}
+                                      {d.documentKind.toUpperCase()}
                                     </a>
                                   ))
                                 )}
                               </div>
                             </TableCell>
                             <TableCell className="text-right">
-                              {visitor.status === "scheduled" && (
+                              {v.status === "scheduled" && (
                                 <Button
                                   size="sm"
-                                  onClick={() => checkInMutation.mutate(visitor)}
+                                  onClick={() => checkInMutation.mutate(v)}
                                   disabled={checkInMutation.isPending}
-                                  data-testid={`button-check-in-${visitor.id}`}
+                                  data-testid={`button-check-in-${v.id}`}
                                 >
                                   Check in
                                 </Button>
                               )}
-                              {visitor.status === "checked_in" && (
+                              {v.status === "checked_in" && (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => checkOutMutation.mutate(visitor)}
+                                  onClick={() => checkOutMutation.mutate(v)}
                                   disabled={checkOutMutation.isPending}
-                                  data-testid={`button-check-out-${visitor.id}`}
+                                  data-testid={`button-check-out-${v.id}`}
                                 >
                                   Check out
                                 </Button>
                               )}
-                              {visitor.status === "checked_out" && (
-                                <span className="inline-flex items-center gap-2 text-xs text-muted-foreground" data-testid={`text-complete-${visitor.id}`}>
+                              {v.status === "checked_out" && (
+                                <span
+                                  className="inline-flex items-center gap-2 text-xs text-muted-foreground"
+                                  data-testid={`text-complete-${v.id}`}
+                                >
                                   <DoorOpen className="h-3.5 w-3.5" />
                                   Complete
                                 </span>
@@ -1605,67 +2249,13 @@ function VisitorDashboard() {
                   )}
                 </CardContent>
               </Card>
+            )}
 
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader className="p-5">
-                    <CardTitle className="text-lg">Active visitors</CardTitle>
-                    <p className="text-sm text-muted-foreground">People currently on site.</p>
-                  </CardHeader>
-                  <CardContent className="space-y-3 p-5 pt-0">
-                    {activeVisitors.length === 0 ? (
-                      <p className="rounded-lg bg-muted p-4 text-sm text-muted-foreground" data-testid="text-no-active-visitors">
-                        No active guests right now.
-                      </p>
-                    ) : (
-                      activeVisitors.map((visitor) => (
-                        <div key={visitor.id} className="rounded-lg border border-border p-3" data-testid={`card-active-${visitor.id}`}>
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-medium">{visitor.fullName}</p>
-                              <p className="text-xs text-muted-foreground">Hosted by {visitor.hostName}</p>
-                            </div>
-                            <Badge variant="outline">{visitor.badgeNumber || "No badge"}</Badge>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </CardContent>
-                </Card>
+            {section === "documents" && <DocumentAdmin documents={documents} />}
 
-                <Card>
-                  <CardHeader className="p-5">
-                    <CardTitle className="text-lg">Next arrivals</CardTitle>
-                    <p className="text-sm text-muted-foreground">Upcoming guests to prepare for.</p>
-                  </CardHeader>
-                  <CardContent className="space-y-3 p-5 pt-0">
-                    {nextArrivals.length === 0 ? (
-                      <p className="rounded-lg bg-muted p-4 text-sm text-muted-foreground" data-testid="text-no-next-arrivals">
-                        No scheduled arrivals are waiting.
-                      </p>
-                    ) : (
-                      nextArrivals.map((visitor) => (
-                        <div key={visitor.id} className="flex items-start gap-3 rounded-lg border border-border p-3" data-testid={`card-arrival-${visitor.id}`}>
-                          <div className="mt-0.5 rounded-md bg-amber-500/10 p-2 text-amber-700 dark:text-amber-300">
-                            <CalendarClock className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium">{visitor.fullName}</p>
-                            <p className="text-xs text-muted-foreground">{formatArrival(visitor.expectedArrival)} · {visitor.hostName}</p>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+            {section === "sms" && <SmsCenter visitors={visitors} campaigns={campaigns} />}
 
-            <DocumentAdmin documents={documents} />
-
-            <SmsCenter visitors={visitors} campaigns={campaigns} />
-
-            <ComplianceCenter controls={controls} auditLogs={auditLogs} />
+            {section === "compliance" && <ComplianceCenter controls={controls} auditLogs={auditLogs} />}
           </section>
         </main>
       </div>
