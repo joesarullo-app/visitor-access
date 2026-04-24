@@ -1,6 +1,6 @@
-# VisitFlow
+# Entra
 
-VisitFlow is a visitor management platform for offices, studios, and regulated workspaces. It pairs a self-serve guest kiosk with an operator backend for check-in, compliance, and visitor communications. The app is a React + Vite frontend backed by an Express API that reads and writes through Supabase.
+Entra is a visitor management platform for offices, studios, and regulated workspaces. It pairs a self-serve guest kiosk with an operator backend for check-in, compliance, and visitor communications. The app is a React + Vite frontend backed by an Express API that reads and writes through Supabase.
 
 ## Features
 

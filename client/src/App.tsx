@@ -177,9 +177,9 @@ function QRCodeGraphic({ size = 88 }: { size?: number }) {
   );
 }
 
-function VisitFlowLogo({ className = "h-9 w-9 text-primary" }: { className?: string }) {
+function EntraLogo({ className = "h-9 w-9 text-primary" }: { className?: string }) {
   return (
-    <svg aria-label="VisitFlow logo" viewBox="0 0 48 48" className={className} fill="none">
+    <svg aria-label="Entra logo" viewBox="0 0 48 48" className={className} fill="none">
       <rect x="8" y="7" width="23" height="34" rx="4" stroke="currentColor" strokeWidth="3" />
       <path d="M31 14h5.5A3.5 3.5 0 0 1 40 17.5v13A3.5 3.5 0 0 1 36.5 34H31" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
       <path d="M18 24h16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
@@ -269,7 +269,7 @@ function downloadVisitorsCsv(visitors: Visitor[]) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "visitflow-visitors.csv";
+  link.download = "entra-visitors.csv";
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -411,9 +411,9 @@ function GuestCheckInPage() {
       <header className="border-b border-border bg-background/80 px-4 py-4 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <VisitFlowLogo />
+            <EntraLogo />
             <div>
-              <div className="font-semibold leading-tight">VisitFlow</div>
+              <div className="font-semibold leading-tight">Entra</div>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <MapPin className="h-3 w-3 text-primary" />
                 {SITE_LOCATION}
@@ -1066,7 +1066,7 @@ function SmsCampaignForm({ visitors }: { visitors: Visitor[] }) {
       name: "Emergency lobby update",
       audience: "scheduled",
       message:
-        "VisitFlow update: Please check in at the front desk when you arrive. Reply STOP to opt out.",
+        "Entra update: Please check in at the front desk when you arrive. Reply STOP to opt out.",
     },
   });
 
@@ -1664,9 +1664,9 @@ function VisitorDashboard() {
           aria-label="Primary navigation"
         >
           <div className="flex items-center gap-3">
-            <VisitFlowLogo className="h-9 w-9 text-primary" />
+            <EntraLogo className="h-9 w-9 text-primary" />
             <div>
-              <div className="font-semibold leading-tight">VisitFlow</div>
+              <div className="font-semibold leading-tight">Entra</div>
               <div className="text-xs text-sidebar-foreground/65">Admin console</div>
             </div>
           </div>
@@ -1727,9 +1727,9 @@ function VisitorDashboard() {
           <header className="sticky top-0 z-10 border-b border-border bg-background/88 px-4 py-3 backdrop-blur md:px-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3 lg:hidden">
-                <VisitFlowLogo />
+                <EntraLogo />
                 <div>
-                  <div className="font-semibold">VisitFlow</div>
+                  <div className="font-semibold">Entra</div>
                   <div className="text-xs text-muted-foreground">Admin console</div>
                 </div>
               </div>

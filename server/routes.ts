@@ -24,7 +24,7 @@ async function signedDocumentPdf(document: Awaited<ReturnType<typeof storage.get
   const text = rgb(0.12, 0.16, 0.22);
   let y = 736;
 
-  page.drawText("VisitFlow Signed Visitor Document", { x: 48, y, size: 18, font: bold, color: teal });
+  page.drawText("Entra Signed Visitor Document", { x: 48, y, size: 18, font: bold, color: teal });
   y -= 32;
   page.drawText(document.documentName, { x: 48, y, size: 14, font: bold, color: text });
   y -= 28;
