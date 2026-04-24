@@ -52,7 +52,9 @@ import {
   Video,
 } from "lucide-react";
 import { Link } from "wouter";
+import { QRCodeSVG } from "qrcode.react";
 import { queryClient, apiRequest, API_BASE } from "./lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -153,27 +155,30 @@ const visitorTypes = [
   { id: "candidate", label: "Candidate", icon: Briefcase, detail: "Interview reception" },
 ] as const;
 
-function QRCodeGraphic({ size = 88 }: { size?: number }) {
+function getCheckInUrl() {
+  if (typeof window === "undefined") return "https://entra.app/#/?mode=checkin";
+  const { origin, pathname } = window.location;
+  return `${origin}${pathname}#/?mode=checkin`;
+}
+
+function QRCodeGraphic({ size = 88, value }: { size?: number; value?: string }) {
+  const url = value ?? getCheckInUrl();
   return (
-    <svg
-      aria-hidden
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      className="rounded-lg border border-white/20 bg-white p-1.5 text-slate-900"
+    <div
+      className="rounded-lg border border-white/20 bg-white p-1.5"
+      style={{ width: size, height: size }}
+      data-testid="qr-check-in"
     >
-      <rect x="0" y="0" width="30" height="30" fill="currentColor" />
-      <rect x="5" y="5" width="20" height="20" fill="white" />
-      <rect x="10" y="10" width="10" height="10" fill="currentColor" />
-      <rect x="70" y="0" width="30" height="30" fill="currentColor" />
-      <rect x="75" y="5" width="20" height="20" fill="white" />
-      <rect x="80" y="10" width="10" height="10" fill="currentColor" />
-      <rect x="0" y="70" width="30" height="30" fill="currentColor" />
-      <rect x="5" y="75" width="20" height="20" fill="white" />
-      <rect x="10" y="80" width="10" height="10" fill="currentColor" />
-      <rect x="40" y="40" width="20" height="20" fill="currentColor" />
-      <rect x="85" y="85" width="15" height="15" fill="currentColor" />
-    </svg>
+      <QRCodeSVG
+        value={url}
+        size={size - 12}
+        level="M"
+        marginSize={0}
+        bgColor="#ffffff"
+        fgColor="#0f172a"
+        style={{ display: "block" }}
+      />
+    </div>
   );
 }
 
@@ -352,7 +357,7 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
   );
 }
 
-function GuestCheckInPage() {
+function GuestCheckInFlow({ onExit }: { onExit: () => void }) {
   const [theme, setTheme] = useState<Theme>("light");
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [visitorType, setVisitorType] = useState<(typeof visitorTypes)[number]["id"]>("guest");
@@ -433,6 +438,14 @@ function GuestCheckInPage() {
               data-testid="button-guest-toggle-theme"
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={onExit}
+              data-testid="button-guest-exit-flow"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Home
             </Button>
             <Link href="/admin">
               <Button variant="outline" data-testid="link-admin-backend">
@@ -872,6 +885,167 @@ function GuestCheckInPage() {
       </main>
     </div>
   );
+}
+
+function KioskLauncher({ onStartCheckIn }: { onStartCheckIn: () => void }) {
+  const { toast } = useToast();
+  const checkInUrl = getCheckInUrl();
+
+  const notifyAssistant = () =>
+    toast({
+      title: "Virtual assistant",
+      description: "Reception has been pinged. A team member will join shortly.",
+    });
+
+  const notifyHuman = () =>
+    toast({
+      title: "Ping a human",
+      description: "We've paged our team. Someone will be right with you.",
+    });
+
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-black"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-32 top-1/3 h-[520px] w-[520px] rounded-full bg-primary/20 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-40 -top-40 h-[480px] w-[480px] rounded-full bg-purple-500/15 blur-3xl"
+      />
+
+      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-10 md:px-10 md:py-16">
+        <div className="flex flex-col items-center text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-200 backdrop-blur">
+            <MapPin className="h-3.5 w-3.5 text-primary" />
+            {SITE_LOCATION}
+          </div>
+          <h1 className="mt-6 text-5xl font-black tracking-tight md:text-7xl">
+            {SITE_TITLE}
+          </h1>
+          <p className="mt-3 text-base text-slate-400 md:text-lg">{SITE_SUBTITLE}</p>
+        </div>
+
+        <div className="mt-10 grid flex-1 items-center gap-6 md:mt-16 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <button
+            type="button"
+            onClick={onStartCheckIn}
+            data-testid="button-kiosk-start-checkin"
+            className="group relative flex min-h-[320px] flex-col justify-between overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.02] p-8 text-left shadow-2xl ring-1 ring-inset ring-white/5 transition hover:border-primary/40 hover:from-white/[0.1]"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div
+                className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-primary text-white shadow-lg shadow-primary/30"
+                aria-hidden
+              >
+                <UserPlus className="h-8 w-8" />
+              </div>
+              <QRCodeGraphic size={96} value={checkInUrl} />
+            </div>
+            <div className="mt-8">
+              <h2 className="text-4xl font-black leading-tight tracking-tight md:text-5xl">
+                Visitor
+                <br />
+                Check-In
+              </h2>
+              <p className="mt-4 text-sm text-slate-400">Scan QR or tap to begin</p>
+            </div>
+          </button>
+
+          <div className="flex flex-col gap-4">
+            <LauncherAction
+              icon={<Video className="h-5 w-5" />}
+              title="Virtual Assistant"
+              subtitle="Reception link"
+              onClick={notifyAssistant}
+              testId="button-kiosk-virtual-assistant"
+            />
+            <LauncherAction
+              icon={<ConciergeBell className="h-5 w-5" />}
+              title="Ping a Human"
+              subtitle="Page our team"
+              onClick={notifyHuman}
+              testId="button-kiosk-ping-human"
+            />
+            <LauncherAction
+              icon={<LayoutDashboard className="h-5 w-5" />}
+              title="Admin Portal"
+              subtitle="Office management"
+              href="/admin"
+              testId="button-kiosk-admin-portal"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LauncherAction({
+  icon,
+  title,
+  subtitle,
+  onClick,
+  href,
+  testId,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  onClick?: () => void;
+  href?: string;
+  testId: string;
+}) {
+  const body = (
+    <div className="group flex w-full items-center justify-between gap-4 rounded-full border border-white/10 bg-white/[0.04] px-5 py-4 text-left shadow-lg shadow-black/20 ring-1 ring-inset ring-white/5 backdrop-blur transition hover:border-primary/40 hover:bg-white/[0.08]">
+      <div className="flex items-center gap-4">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.06] text-slate-100 ring-1 ring-inset ring-white/10">
+          {icon}
+        </div>
+        <div>
+          <div className="text-base font-semibold text-white">{title}</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+            {subtitle}
+          </div>
+        </div>
+      </div>
+      <ArrowRight className="h-4 w-4 text-slate-500 transition group-hover:translate-x-0.5 group-hover:text-primary" />
+    </div>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} data-testid={testId}>
+        {body}
+      </Link>
+    );
+  }
+
+  return (
+    <button type="button" onClick={onClick} data-testid={testId} className="w-full">
+      {body}
+    </button>
+  );
+}
+
+function GuestCheckInPage() {
+  const [mode, setMode] = useState<"launcher" | "flow">(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash || "";
+      const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+      if (new URLSearchParams(query).get("mode") === "checkin") return "flow";
+    }
+    return "launcher";
+  });
+
+  if (mode === "flow") {
+    return <GuestCheckInFlow onExit={() => setMode("launcher")} />;
+  }
+  return <KioskLauncher onStartCheckIn={() => setMode("flow")} />;
 }
 
 function VisitorForm({ onSuccess }: { onSuccess: () => void }) {
